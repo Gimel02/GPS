@@ -270,3 +270,39 @@ input::placeholder {
   background: #ff5d5d;
   color: #2b0606;
 }
+
+.reserved-layout {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 24px;
+}
+
+.info-card h2 {
+  color: #43e97b;
+}
+
+.student-info {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+  font-size: 1.05rem;
+}
+
+.student-info p {
+  margin: 0;
+}
+
+.release-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 220px;
+}
+
+.release-btn {
+  width: 100%;
+  min-height: 90px;
+  font-size: 1.3rem;
+}

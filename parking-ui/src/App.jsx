@@ -30,10 +30,16 @@ function Login({ onLogin }) {
       const data = await res.json();
 
       if (data.success) {
-        onLogin({
-          user: data.user.numero_control,
-          nombre: data.user.nombre
-        });
+            onLogin({
+      user: data.user.numero_control,
+      nombre: data.user.nombre,
+      apellido_paterno: data.user.apellido_paterno,
+      apellido_materno: data.user.apellido_materno,
+      marca_auto: data.user.marca_auto,
+      color: data.user.color,
+      placas: data.user.placas,
+      carrera: data.user.carrera
+    });
 
         navigate("/parking");
       } else {
@@ -148,6 +154,7 @@ function Parking({ session, onLogout }) {
   const [cajones, setCajones] = useState([]);
   const [disponible, setDisponible] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
+  const [cajonApartado, setCajonApartado] = useState(null);
 
   async function cargarZona(zonaSeleccionada) {
     try {
@@ -168,6 +175,40 @@ function Parking({ session, onLogout }) {
       alert("Error al cargar los cajones");
     }
   }
+
+  async function handleLiberarEspacio() {
+  const confirmar = window.confirm(
+    "Al seleccionar liberar espacio es porque te retiras del tecnológico. ¿Estás seguro de liberar el espacio?"
+  );
+
+  if (!confirmar) return;
+
+  try {
+    const res = await fetch("http://localhost:3000/liberar", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        id_cajon: cajonApartado.id,
+        usuario: session.user
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert("Espacio liberado correctamente");
+      setCajonApartado(null);
+      cargarZona(zona);
+    } else {
+      alert("No se pudo liberar el espacio");
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Error al liberar espacio");
+  }
+}
 
   function handleSpotClick(cajon) {
     if (cajon.ocupado === 1 || cajon.ocupado === true) return;
@@ -195,14 +236,18 @@ function Parking({ session, onLogout }) {
     const data = await res.json();
 
     if (data.success) {
-      alert("Cajón apartado correctamente");
+      const cajon = cajones.find((c) => c.id === selectedId);
 
-      // recargar zona para ver cambios
-      cargarZona(zona);
+      setCajonApartado({
+        id: selectedId,
+        numero: cajon.numero,
+        zona: zona
+      });
+
+      setSelectedId(null);
     } else {
       alert("Ese cajón ya fue ocupado");
     }
-
   } catch (error) {
     console.error(error);
     alert("Error al apartar");
@@ -213,6 +258,50 @@ function Parking({ session, onLogout }) {
     onLogout();
     navigate("/login");
   }
+
+  if (cajonApartado) {
+  return (
+    <div className="page parking-page">
+      <header className="topbar">
+        <div>
+          <h2 className="topbar-title">
+            Cajón {cajonApartado.numero} apartado con éxito
+          </h2>
+          <p className="muted">Usuario: {session.nombre || session.user}</p>
+        </div>
+
+        <button className="btn btn-ghost" onClick={handleLogout}>
+          Salir
+        </button>
+      </header>
+
+      <main className="reserved-layout">
+        <section className="card info-card">
+          <h2>Información</h2>
+
+          <div className="student-info">
+            <p><strong>Núm. control:</strong> {session.user}</p>
+            <p><strong>Nombre:</strong> {session.nombre}</p>
+            <p><strong>Apellido paterno:</strong> {session.apellido_paterno}</p>
+            <p><strong>Apellido materno:</strong> {session.apellido_materno}</p>
+            <p><strong>Marca auto:</strong> {session.marca_auto}</p>
+            <p><strong>Color:</strong> {session.color}</p>
+            <p><strong>Placas:</strong> {session.placas}</p>
+            <p><strong>Carrera:</strong> {session.carrera}</p>
+            <p><strong>Zona:</strong> {cajonApartado.zona}</p>
+            <p><strong>Número cajón:</strong> {cajonApartado.numero}</p>
+          </div>
+        </section>
+
+        <aside className="card release-card">
+          <button className="btn release-btn" onClick={handleLiberarEspacio}>
+            Liberar espacio
+          </button>
+        </aside>
+      </main>
+    </div>
+  );
+}
 
   return (
     <div className="page parking-page">
@@ -259,7 +348,7 @@ function Parking({ session, onLogout }) {
             Verde = disponible, rojo = ocupado, amarillo = seleccionado
           </p>
 
-          <div className="parking-grid" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+          <div className="parking-grid" style={{ gridTemplateColumns: "repeat(8, 1fr)" }}>
             {cajones.map((cajon) => {
               const isSelected = selectedId === cajon.id;
 

@@ -75,6 +75,25 @@ app.get("/cajones/:zona", (req, res) => {
   });
 });
 
+app.post("/liberar", (req, res) => {
+  const { id_cajon, usuario } = req.body;
+
+  const sql = `
+    UPDATE cajones
+    SET ocupado = 0, usuario = NULL
+    WHERE id = ? AND usuario = ?
+  `;
+
+  db.query(sql, [id_cajon, usuario], (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false });
+    }
+
+    res.json({ success: result.affectedRows > 0 });
+  });
+});
+
 app.listen(3000, () => {
   console.log("🔥 Backend corriendo en http://localhost:3000");
 });
