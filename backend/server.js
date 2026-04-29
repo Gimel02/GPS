@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const mysql = require("mysql2");
 const cors = require("cors");
@@ -7,12 +8,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// 🔌 conexión a MySQL
+// conexión a MySQL
 const db = mysql.createConnection({
-  host: "localhost",
-  user: "root",
-  password: "050500", // 👈 pon aquí tu password (si le pusiste)
-  database: "parking"
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME
 });
 
 // 🚀 LOGIN
@@ -141,3 +142,5 @@ app.listen(3000, () => {
   console.log("🔥 Backend corriendo en http://localhost:3000");
 });
 
+
+console.log(process.env.DB_HOST);
