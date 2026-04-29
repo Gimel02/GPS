@@ -1,60 +1,248 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
 function Login({ onLogin }) {
   const navigate = useNavigate();
-  const [view, setView] = useState("select");
-  const [controlNumber, setControlNumber] = useState("");
-  const [password, setPassword] = useState("");
 
-  async function handleStudentLogin(e) {
+  const [tipo, setTipo] = useState("");
+  const [puerta, setPuerta] = useState("");
+  const [pantalla, setPantalla] = useState("seleccion");
+
+  const [proposito, setProposito] = useState("");
+  const [nombre, setNombre] = useState("");
+  const [apellido, setApellido] = useState("");
+  const [entraVehiculo, setEntraVehiculo] = useState(null);
+
+  const [placas, setPlacas] = useState("");
+  const [marca, setMarca] = useState("");
+  const [color, setColor] = useState("");
+
+  function seleccionarInvitado() {
+    setTipo("invitado");
+  }
+
+  function continuarSeleccion() {
+    if (!tipo) {
+      alert("Selecciona Estudiante, Trabajador o Invitado");
+      return;
+    }
+
+    if (!puerta) {
+      alert("Selecciona la puerta donde te encuentras");
+      return;
+    }
+
+    if (tipo === "invitado") {
+      setPantalla("invitado");
+    } else {
+      alert("Por ahora estamos programando el caso Invitado");
+    }
+  }
+
+  async function handleInvitadoSubmit(e) {
     e.preventDefault();
 
-    if (!controlNumber.trim() || !password.trim()) {
-      alert("Escribe número de control y contraseña");
+    if (!proposito.trim() || !nombre.trim() || !apellido.trim()) {
+      alert("Completa propósito, nombre y apellido");
+      return;
+    }
+
+    if (entraVehiculo === null) {
+      alert("Selecciona si entra en vehículo");
+      return;
+    }
+
+    if (entraVehiculo === true) {
+      if (!placas.trim() || !marca.trim() || !color.trim()) {
+        alert("Completa placas, marca y color del vehículo");
+        return;
+      }
+
+      onLogin({
+        user: `INV-${Date.now()}`,
+        nombre,
+        apellido_paterno: apellido,
+        tipo: "invitado",
+        puerta,
+        proposito,
+        entraVehiculo,
+        placas,
+        marca_auto: marca,
+        color,
+        carrera: "Invitado"
+      });
+
+      navigate("/parking");
       return;
     }
 
     try {
-      const res = await fetch("http://localhost:3000/login", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          numero_control: controlNumber,
-          password: password
-        })
-      });
+  const res = await fetch("http://localhost:3000/entradas-dia", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      tipo: "invitado",
+      puerta,
+      proposito,
+      nombre,
+      apellido,
+      entra_vehiculo: false,
+      placas: null,
+      marca: null,
+      color: null
+    })
+  });
 
-      const data = await res.json();
+  const data = await res.json();
 
-      if (data.success) {
-            onLogin({
-      user: data.user.numero_control,
-      nombre: data.user.nombre,
-      apellido_paterno: data.user.apellido_paterno,
-      apellido_materno: data.user.apellido_materno,
-      marca_auto: data.user.marca_auto,
-      color: data.user.color,
-      placas: data.user.placas,
-      carrera: data.user.carrera
-    });
+  if (data.success) {
+  alert("Permitir acceso. Datos guardados en la bitácora del día.");
 
-        navigate("/parking");
-      } else {
-        alert("Credenciales incorrectas");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Error conectando con el servidor");
-    }
+  // LIMPIAR FORM (opcional pero pro)
+  setProposito("");
+  setNombre("");
+  setApellido("");
+  setEntraVehiculo(null);
+  setTipo("");
+setPuerta("");
+
+  // REGRESAR A PANTALLA PRINCIPAL
+  setPantalla("seleccion");
+} else {
+    alert("Error al guardar en bitácora");
+  }
+} catch (error) {
+  console.error(error);
+  alert("Error conectando con el servidor");
+}
+    
   }
 
-  function handleExit() {
-    setView("select");
-    setControlNumber("");
-    setPassword("");
+  if (pantalla === "invitado") {
+    return (
+      <div className="page center-page">
+        <div className="card login-card">
+          <div className="logo-circle">?</div>
+
+          <h1 className="guest-title">INVITADO</h1>
+          <p className="selected-door">
+            {puerta.replace("puerta", "Puerta ")} seleccionada
+          </p>
+
+          <form className="form" onSubmit={handleInvitadoSubmit}>
+            <label>
+              Propósito
+              <input
+                type="text"
+                value={proposito}
+                onChange={(e) => setProposito(e.target.value)}
+                placeholder="Ej. Visita, trámite, reunión"
+              />
+            </label>
+
+            <label>
+              Nombre
+              <input
+                type="text"
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Nombre del invitado"
+              />
+            </label>
+
+            <label>
+              Apellido
+              <input
+                type="text"
+                value={apellido}
+                onChange={(e) => setApellido(e.target.value)}
+                placeholder="Apellido del invitado"
+              />
+            </label>
+
+            <div className="vehicle-question">
+              <span>¿Entra en vehículo?</span>
+
+              <div className="availability-actions">
+                <button
+                  type="button"
+                  className={
+                    entraVehiculo === true
+                      ? "status-pill yes active"
+                      : "status-pill yes"
+                  }
+                  onClick={() => setEntraVehiculo(true)}
+                >
+                  Sí
+                </button>
+
+                <button
+                  type="button"
+                  className={
+                    entraVehiculo === false
+                      ? "status-pill no active"
+                      : "status-pill no"
+                  }
+                  onClick={() => setEntraVehiculo(false)}
+                >
+                  No
+                </button>
+              </div>
+            </div>
+
+            {entraVehiculo === true && (
+              <>
+                <label>
+                  Placas
+                  <input
+                    type="text"
+                    value={placas}
+                    onChange={(e) => setPlacas(e.target.value)}
+                    placeholder="Ej. ABC123"
+                  />
+                </label>
+
+                <label>
+                  Marca
+                  <input
+                    type="text"
+                    value={marca}
+                    onChange={(e) => setMarca(e.target.value)}
+                    placeholder="Ej. Volkswagen"
+                  />
+                </label>
+
+                <label>
+                  Color
+                  <input
+                    type="text"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    placeholder="Ej. Plata"
+                  />
+                </label>
+              </>
+            )}
+
+            <div className="student-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => setPantalla("seleccion")}
+              >
+                Volver
+              </button>
+
+              <button type="submit" className="btn">
+                Continuar
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -62,86 +250,62 @@ function Login({ onLogin }) {
       <div className="card login-card">
         <div className="logo-circle">?</div>
 
-        {view === "select" && (
-          <>
-            <h1>Favor de loggearse</h1>
+        <h1>Favor de seleccionar</h1>
 
-            <div className="role-buttons">
-              <button className="btn role-btn" onClick={() => setView("student")}>
-                Estudiante
-              </button>
+        <div className="role-buttons three-buttons">
+          <button
+            className={
+              tipo === "estudiante"
+                ? "btn role-btn active-btn"
+                : "btn btn-ghost role-btn"
+            }
+            onClick={() => setTipo("estudiante")}
+          >
+            Estudiante
+          </button>
 
-              <button className="btn btn-ghost role-btn">
-                Invitado
-              </button>
-            </div>
+          <button
+            className={
+              tipo === "trabajador"
+                ? "btn role-btn active-btn"
+                : "btn btn-ghost role-btn"
+            }
+            onClick={() => setTipo("trabajador")}
+          >
+            Trabajador
+          </button>
 
-            <div className="bottom-actions">
-              <button className="btn btn-ghost small-btn" onClick={handleExit}>
-                Salir
-              </button>
-            </div>
-          </>
-        )}
+          <button
+            className={
+              tipo === "invitado"
+                ? "btn role-btn active-btn"
+                : "btn btn-ghost role-btn"
+            }
+            onClick={seleccionarInvitado}
+          >
+            Invitado
+          </button>
+        </div>
 
-        {view === "student" && (
-          <>
-            <h1>Favor de loggearse</h1>
+        <p className="muted center-text">
+          Selecciona la puerta donde te encuentras
+        </p>
 
-            <form className="form" onSubmit={handleStudentLogin}>
-              <label>
-                Núm. control
-                <input
-                  type="text"
-                  value={controlNumber}
-                  onChange={(e) => setControlNumber(e.target.value)}
-                  placeholder="Ej. 22131234"
-                />
-              </label>
+        <div className="door-buttons">
+          {["puerta1", "puerta2", "puerta3", "puerta4"].map((p, index) => (
+            <button
+              key={p}
+              className={puerta === p ? "btn active-btn" : "btn btn-ghost"}
+              onClick={() => setPuerta(p)}
+            >
+              Puerta {index + 1}
+            </button>
+          ))}
+        </div>
 
-              <label>
-                Contraseña
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Tu contraseña"
-                />
-              </label>
-
-              <div className="qr-block">
-                <p className="muted">Opción para escanear código QR</p>
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => alert("Aquí irá el escaneo QR más adelante")}
-                >
-                  Escanear QR
-                </button>
-              </div>
-
-              <div className="student-actions">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => setView("select")}
-                >
-                  Volver
-                </button>
-
-                <button type="submit" className="btn">
-                  Entrar
-                </button>
-              </div>
-            </form>
-
-            <div className="bottom-actions">
-              <button className="btn btn-ghost small-btn" onClick={handleExit}>
-                Salir
-              </button>
-            </div>
-          </>
-        )}
+        <button className="btn continue-selection-btn" onClick={continuarSeleccion}>
+          Continuar
+        </button>
       </div>
     </div>
   );
@@ -155,6 +319,12 @@ function Parking({ session, onLogout }) {
   const [disponible, setDisponible] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [cajonApartado, setCajonApartado] = useState(null);
+
+  useEffect(() => {
+  if (session.puerta) {
+    cargarZona(session.puerta);
+  }
+}, []);
 
   async function cargarZona(zonaSeleccionada) {
     try {
@@ -215,7 +385,7 @@ function Parking({ session, onLogout }) {
     setSelectedId((current) => (current === cajon.id ? null : cajon.id));
   }
 
- async function handleReserve() {
+async function handleReserve() {
   if (!selectedId) {
     alert("Selecciona un cajón primero");
     return;
@@ -228,29 +398,32 @@ function Parking({ session, onLogout }) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        id_cajon: selectedId,
-        usuario: session.user
-      })
+  id_cajon: selectedId,
+  usuario: session.user,
+  zona: zona
+})
     });
 
     const data = await res.json();
 
     if (data.success) {
-      const cajon = cajones.find((c) => c.id === selectedId);
+  const cajon = cajones.find((c) => c.id === selectedId);
 
-      setCajonApartado({
-        id: selectedId,
-        numero: cajon.numero,
-        zona: zona
-      });
+  alert(
+    `Permitir acceso.\nSe apartó el cajón ${cajon.numero}.\nSe registró en bitácora.`
+  );
 
-      setSelectedId(null);
-    } else {
-      alert("Ese cajón ya fue ocupado");
-    }
+  // 🔁 regresar a pantalla principal
+  onLogout();
+  navigate("/login");
+
+} else {
+  alert("Error al apartar cajón");
+}
+
   } catch (error) {
     console.error(error);
-    alert("Error al apartar");
+    alert("Error conectando con el servidor");
   }
 }
 
@@ -318,19 +491,13 @@ function Parking({ session, onLogout }) {
 
       <main className="layout">
         <section className="card">
-          <h2>Zonas</h2>
+  <h1 className="guest-title">INVITADO</h1>
 
-          <div className="zone-buttons">
-            <button className="btn btn-ghost" onClick={() => cargarZona("puerta1")}>
-              Puerta 1
-            </button>
-            <button className="btn btn-ghost" onClick={() => cargarZona("puerta2")}>
-              Puerta 2
-            </button>
-            <button className="btn btn-ghost" onClick={() => cargarZona("puerta3")}>
-              Puerta 3
-            </button>
-          </div>
+  <p className="selected-door">
+    {session.puerta?.replace("puerta", "Puerta ")} seleccionada
+  </p>
+
+  <h2>Consultando disponibilidad</h2>
 
           <div className="availability-box">
             <span className="muted">¿Disponible?</span>
@@ -375,7 +542,8 @@ function Parking({ session, onLogout }) {
 
           <div className="summary">
             <p>
-              <span className="muted">Zona:</span> <strong>{zona || "Ninguna"}</strong>
+              <span className="muted">Puerta:</span>{" "}
+<strong>{session.puerta?.replace("puerta", "Puerta ")}</strong>
             </p>
 
             <p>

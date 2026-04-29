@@ -306,3 +306,68 @@ input::placeholder {
   min-height: 90px;
   font-size: 1.3rem;
 }
+
+.three-buttons {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.door-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin: 14px 0 20px;
+}
+
+.active-btn {
+  background: #43e97b !important;
+  color: #062010 !important;
+}
+
+.center-text {
+  text-align: center;
+}
+
+.vehicle-question {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.vehicle-question .availability-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.status-pill {
+  cursor: pointer;
+}
+
+.continue-selection-btn {
+  width: 100%;
+  margin-top: 18px;
+}
+
+.guest-title {
+  text-align: center;
+  color: #ff5d5d;
+  letter-spacing: 4px;
+}
+
+.selected-door {
+  text-align: center;
+  margin-top: -10px;
+  margin-bottom: 24px;
+  color: #43e97b;
+  font-size: 1.3rem;
+  font-weight: 800;
+}
+
+.vehicle-question {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.vehicle-question span {
+  font-weight: 700;
+}

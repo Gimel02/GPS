@@ -94,6 +94,49 @@ app.post("/liberar", (req, res) => {
   });
 });
 
+app.post("/entradas-dia", (req, res) => {
+  const {
+    tipo,
+    puerta,
+    proposito,
+    nombre,
+    apellido,
+    entra_vehiculo,
+    placas,
+    marca,
+    color
+  } = req.body;
+
+  const sql = `
+    INSERT INTO entradas_del_dia
+    (tipo, puerta, proposito, nombre, apellido, entra_vehiculo, placas, marca, color)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  db.query(
+    sql,
+    [
+      tipo,
+      puerta,
+      proposito,
+      nombre,
+      apellido,
+      entra_vehiculo,
+      placas || null,
+      marca || null,
+      color || null
+    ],
+    (err, result) => {
+      if (err) {
+        console.error(err);
+        return res.status(500).json({ success: false });
+      }
+
+      res.json({ success: true, id: result.insertId });
+    }
+  );
+});
+
 app.listen(3000, () => {
   console.log("🔥 Backend corriendo en http://localhost:3000");
 });
