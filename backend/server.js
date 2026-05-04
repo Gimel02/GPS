@@ -16,7 +16,7 @@ const db = mysql.createConnection({
   database: process.env.DB_NAME
 });
 
-// 🚀 LOGIN
+//  LOGIN
 app.post("/login", (req, res) => {
   const { numero_control, password } = req.body;
 
@@ -40,6 +40,28 @@ app.post("/login", (req, res) => {
 });
 
 
+//TRABAJADOR
+app.post("/trabajador", (req, res) => {
+  const { numero_empleado } = req.body;
+
+  const sql = `
+    SELECT * FROM trabajadores
+    WHERE numero_empleado = ?
+  `;
+
+  db.query(sql, [numero_empleado], (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false });
+    }
+
+    if (result.length > 0) {
+      res.json({ success: true, trabajador: result[0] });
+    } else {
+      res.json({ success: false });
+    }
+  });
+});
 //
 app.post("/apartar", (req, res) => {
   const { id_cajon, usuario } = req.body;
@@ -98,6 +120,7 @@ app.post("/liberar", (req, res) => {
 app.post("/entradas-dia", (req, res) => {
   const {
     tipo,
+    clave,
     puerta,
     proposito,
     nombre,
@@ -110,14 +133,15 @@ app.post("/entradas-dia", (req, res) => {
 
   const sql = `
     INSERT INTO entradas_del_dia
-    (tipo, puerta, proposito, nombre, apellido, entra_vehiculo, placas, marca, color)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (tipo, clave, puerta, proposito, nombre, apellido, entra_vehiculo, placas, marca, color)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   db.query(
     sql,
     [
       tipo,
+      clave || null,
       puerta,
       proposito,
       nombre,

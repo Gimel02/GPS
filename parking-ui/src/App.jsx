@@ -13,6 +13,9 @@ function Login({ onLogin }) {
   const [apellido, setApellido] = useState("");
   const [entraVehiculo, setEntraVehiculo] = useState(null);
 
+  const [numeroEmpleado, setNumeroEmpleado] = useState("");
+const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
+
   const [placas, setPlacas] = useState("");
   const [marca, setMarca] = useState("");
   const [color, setColor] = useState("");
@@ -22,21 +25,24 @@ function Login({ onLogin }) {
   }
 
   function continuarSeleccion() {
-    if (!tipo) {
-      alert("Selecciona Estudiante, Trabajador o Invitado");
-      return;
-    }
+   if (!tipo) {
+    alert("Selecciona Estudiante, Trabajador o Invitado");
+    return;
+  }
 
-    if (!puerta) {
-      alert("Selecciona la puerta donde te encuentras");
-      return;
-    }
+  if (!puerta) {
+    alert("Selecciona la puerta donde te encuentras");
+    return;
+  }
 
-    if (tipo === "invitado") {
-      setPantalla("invitado");
-    } else {
-      alert("Por ahora estamos programando el caso Invitado");
-    }
+  if (tipo === "invitado") {
+    setPantalla("invitado");
+  } else if (tipo === "trabajador") {
+    setPantalla("trabajador");
+  } else {
+    alert("Falta programar estudiante");
+  }
+
   }
 
   async function handleInvitadoSubmit(e) {
@@ -83,16 +89,17 @@ function Login({ onLogin }) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      tipo: "invitado",
-      puerta,
-      proposito,
-      nombre,
-      apellido,
-      entra_vehiculo: false,
-      placas: null,
-      marca: null,
-      color: null
-    })
+  tipo: "invitado",
+  clave: `INV-${Date.now()}`,
+  puerta,
+  proposito,
+  nombre,
+  apellido,
+  entra_vehiculo: false,
+  placas: null,
+  marca: null,
+  color: null
+})
   });
 
   const data = await res.json();
@@ -100,7 +107,7 @@ function Login({ onLogin }) {
   if (data.success) {
   alert("Permitir acceso. Datos guardados en la bitácora del día.");
 
-  // LIMPIAR FORM (opcional pero pro)
+  // LIMPIAR FORM 
   setProposito("");
   setNombre("");
   setApellido("");
@@ -119,6 +126,186 @@ setPuerta("");
 }
     
   }
+
+  if (pantalla === "trabajador") {
+  return (
+    <div className="page center-page">
+      <div className="card login-card">
+        <div className="logo-circle">📷</div>
+
+        <h1 className="guest-title">TRABAJADOR</h1>
+
+        <p className="selected-door">
+          {puerta.replace("puerta", "Puerta ")} seleccionada
+        </p>
+
+        <div className="form">
+
+          <div className="vehicle-question">
+            <span>¿Busca estacionamiento?</span>
+
+            <div className="availability-actions">
+              <button
+                type="button"
+                className={
+                  buscaEstacionamiento === true
+                    ? "status-pill yes active"
+                    : "status-pill yes"
+                }
+                onClick={() => setBuscaEstacionamiento(true)}
+              >
+                Sí
+              </button>
+
+              <button
+                type="button"
+                className={
+                  buscaEstacionamiento === false
+                    ? "status-pill no active"
+                    : "status-pill no"
+                }
+                onClick={() => setBuscaEstacionamiento(false)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+
+          {/* FAKE QR */}
+          <div style={{ textAlign: "center", margin: "20px 0" }}>
+            <div style={{
+              width: "200px",
+              height: "120px",
+              border: "2px dashed #555",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              margin: "0 auto",
+              borderRadius: "10px"
+            }}>
+              📷 Escanear QR
+            </div>
+          </div>
+
+          {/* INPUT REAL */}
+          <label>
+            Número de empleado
+            <input
+              type="text"
+              value={numeroEmpleado}
+              onChange={(e) => setNumeroEmpleado(e.target.value)}
+              placeholder="Ej. 12345"
+            />
+          </label>
+
+          <div className="student-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setPantalla("seleccion")}
+            >
+              Volver
+            </button>
+
+            <button
+              className="btn"
+              onClick={async () => {
+                if (!numeroEmpleado.trim()) {
+                  alert("Ingresa número de empleado");
+                  return;
+                }
+
+                if (buscaEstacionamiento === null) {
+                  alert("Selecciona si busca estacionamiento");
+                  return;
+                }
+
+               
+    const resTrabajador = await fetch("http://localhost:3000/trabajador", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        numero_empleado: numeroEmpleado
+      })
+    });
+
+    const dataTrabajador = await resTrabajador.json();
+
+    if (!dataTrabajador.success) {
+      alert("Número de empleado no registrado");
+      return;
+    }
+
+    const trabajador = dataTrabajador.trabajador;
+
+    
+    if (buscaEstacionamiento === true) {
+      onLogin({
+        user: trabajador.numero_empleado,
+        nombre: trabajador.nombre,
+        apellido_paterno: trabajador.apellido_paterno,
+        apellido_materno: trabajador.apellido_materno,
+        tipo: "trabajador",
+        puerta,
+        marca_auto: trabajador.marca_auto,
+        color: trabajador.color,
+        placas: trabajador.placas,
+        carrera: trabajador.departamento
+      });
+
+      navigate("/parking");
+      return;
+    }
+
+    try {
+      const res = await fetch("http://localhost:3000/entradas-dia", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+  tipo: "trabajador",
+  clave: trabajador.numero_empleado,
+  puerta,
+  proposito: "Entrada sin estacionamiento",
+  nombre: trabajador.nombre,
+  apellido: trabajador.apellido_paterno,
+  entra_vehiculo: false
+})
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        alert("Acceso permitido. Registrado en bitácora.");
+
+        // reset
+        setNumeroEmpleado("");
+        setBuscaEstacionamiento(null);
+        setTipo("");
+        setPuerta("");
+        setPantalla("seleccion");
+      } else {
+        alert("Error al guardar");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error conectando con el servidor");
+    }
+  }}
+>
+  Continuar
+
+                
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
   if (pantalla === "invitado") {
     return (
@@ -409,11 +596,37 @@ async function handleReserve() {
     if (data.success) {
   const cajon = cajones.find((c) => c.id === selectedId);
 
+await fetch("http://localhost:3000/entradas-dia", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    tipo: session.tipo,
+    clave: session.user,
+    puerta: session.puerta,
+    proposito: session.proposito || "Entrada con estacionamiento",
+    nombre: session.nombre,
+    apellido: session.apellido_paterno || "",
+    entra_vehiculo: true,
+    placas: session.placas || null,
+    marca: session.marca_auto || null,
+    color: session.color || null,
+    clave: session.user
+  })
+});
+
+alert(
+  `Permitir acceso.\nSe apartó el cajón ${cajon.numero}.\nSe registró en bitácora.`
+);
+
+onLogout();
+navigate("/login");
   alert(
     `Permitir acceso.\nSe apartó el cajón ${cajon.numero}.\nSe registró en bitácora.`
   );
 
-  // 🔁 regresar a pantalla principal
+  // regresar a pantalla principal
   onLogout();
   navigate("/login");
 
