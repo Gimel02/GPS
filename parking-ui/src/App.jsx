@@ -1,8 +1,17 @@
 import React, { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 
 function Login({ onLogin }) {
   const navigate = useNavigate();
+
+  /** React 18 agrupa setState: sin esto, navigate("/parking") corre antes de que exista session y vuelve a /login. */
+  function commitSessionAndGoParking(sessionData) {
+    flushSync(() => {
+      onLogin(sessionData);
+    });
+    navigate("/parking");
+  }
 
   const [tipo, setTipo] = useState("");
   const [puerta, setPuerta] = useState("");
@@ -14,7 +23,12 @@ function Login({ onLogin }) {
   const [entraVehiculo, setEntraVehiculo] = useState(null);
 
   const [numeroEmpleado, setNumeroEmpleado] = useState("");
-const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
+  const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
+  const [adminTrabajador, setAdminTrabajador] = useState(null);
+  const [puertasAdmin, setPuertasAdmin] = useState([]);
+  const [puertasSeleccionadas, setPuertasSeleccionadas] = useState([]);
+  const [adminEstado, setAdminEstado] = useState("idle");
+  const [adminMensaje, setAdminMensaje] = useState("");
 
   const [placas, setPlacas] = useState("");
   const [marca, setMarca] = useState("");
@@ -25,24 +39,90 @@ const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
   }
 
   function continuarSeleccion() {
-   if (!tipo) {
-    alert("Selecciona Estudiante, Trabajador o Invitado");
-    return;
+    if (!tipo) {
+      alert("Selecciona Estudiante, Trabajador o Invitado");
+      return;
+    }
+
+    if (!puerta) {
+      alert("Selecciona la puerta donde te encuentras");
+      return;
+    }
+
+    if (tipo === "invitado") {
+      setPantalla("invitado");
+    } else if (tipo === "trabajador") {
+      setPantalla("trabajador");
+    } else {
+      alert("Falta programar estudiante");
+    }
   }
 
-  if (!puerta) {
-    alert("Selecciona la puerta donde te encuentras");
-    return;
+  async function validarPuertaDisponible() {
+    try {
+      const res = await fetch("http://localhost:3000/validar-acceso", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ puerta })
+      });
+      const data = await res.json();
+      if (!res.ok || data.permitido === false) {
+        alert("Acceso denegado: puerta bloqueada por bloqueo maestro.");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error(error);
+      alert("No se pudo validar el estado de la puerta.");
+      return false;
+    }
   }
 
-  if (tipo === "invitado") {
-    setPantalla("invitado");
-  } else if (tipo === "trabajador") {
-    setPantalla("trabajador");
-  } else {
-    alert("Falta programar estudiante");
-  }
+  async function aplicarBloqueoMaestro() {
+    if (!adminTrabajador) {
+      alert("Falta el trabajador administrador en sesión.");
+      return;
+    }
+    if (puertasSeleccionadas.length === 0) {
+      alert("Selecciona al menos una puerta para bloquear.");
+      return;
+    }
 
+    try {
+      const res = await fetch("http://localhost:3000/admin/bloqueo-maestro", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          numero_trabajador: adminTrabajador.numero_empleado,
+          puerta_ids: puertasSeleccionadas
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        alert(
+          data.error ||
+            "No se pudo aplicar el bloqueo maestro. Revisa que el trabajador sea Administrador y que existan las puertas."
+        );
+        return;
+      }
+      if (!data.filas_actualizadas || data.filas_actualizadas < 1) {
+        alert("No se bloqueó ninguna puerta. Verifica los IDs de puertas y recarga la lista.");
+        await cargarPuertasAdmin();
+        return;
+      }
+
+      alert(`Puertas bloqueadas correctamente (${data.filas_actualizadas}).`);
+      await cargarPuertasAdmin();
+    } catch (error) {
+      console.error(error);
+      alert("Error conectando con el servidor para bloquear puertas.");
+    }
   }
 
   async function handleInvitadoSubmit(e) {
@@ -63,8 +143,10 @@ const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
         alert("Completa placas, marca y color del vehículo");
         return;
       }
+      const accesoPermitido = await validarPuertaDisponible();
+      if (!accesoPermitido) return;
 
-      onLogin({
+      commitSessionAndGoParking({
         user: `INV-${Date.now()}`,
         nombre,
         apellido_paterno: apellido,
@@ -77,8 +159,6 @@ const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
         color,
         carrera: "Invitado"
       });
-
-      navigate("/parking");
       return;
     }
 
@@ -125,6 +205,71 @@ setPuerta("");
   alert("Error conectando con el servidor");
 }
     
+  }
+
+  async function cargarPuertasAdmin() {
+    try {
+      const res = await fetch("http://localhost:3000/puertas");
+      const data = await res.json();
+      setPuertasAdmin(data);
+    } catch (error) {
+      console.error(error);
+      alert("No se pudieron cargar las puertas para el panel de bloqueo.");
+    }
+  }
+
+  async function irAPanelAdmin() {
+    if (!numeroEmpleado.trim()) {
+      alert("Ingresa número de empleado");
+      return;
+    }
+
+    setPantalla("admin");
+    setAdminEstado("loading");
+    setAdminMensaje("Validando permisos de administrador...");
+    setAdminTrabajador(null);
+    setPuertasAdmin([]);
+    setPuertasSeleccionadas([]);
+
+    try {
+      const resTrabajador = await fetch("http://localhost:3000/trabajador", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          numero_empleado: numeroEmpleado
+        })
+      });
+
+      const dataTrabajador = await resTrabajador.json();
+
+      if (!dataTrabajador.success) {
+        setAdminEstado("error");
+        setAdminMensaje("Número de empleado no registrado o error de base de datos.");
+        return;
+      }
+
+      const trabajador = dataTrabajador.trabajador;
+
+      const rol = (trabajador.rol || "").toString().trim().toLowerCase();
+      if (rol !== "administrador") {
+        setAdminEstado("error");
+        setAdminMensaje(
+          `Solo un trabajador con rol Administrador puede usar el bloqueo maestro. Rol actual: ${trabajador.rol || "(vacío)"}`
+        );
+        return;
+      }
+
+      setAdminTrabajador(trabajador);
+      await cargarPuertasAdmin();
+      setAdminEstado("ok");
+      setAdminMensaje("");
+    } catch (error) {
+      console.error(error);
+      setAdminEstado("error");
+      setAdminMensaje("Error conectando con el servidor para el panel admin.");
+    }
   }
 
   if (pantalla === "trabajador") {
@@ -231,10 +376,24 @@ setPuerta("");
       })
     });
 
-    const dataTrabajador = await resTrabajador.json();
+    let dataTrabajador;
+    try {
+      dataTrabajador = await resTrabajador.json();
+    } catch {
+      alert("El servidor no respondió correctamente. ¿Está el backend en http://localhost:3000?");
+      return;
+    }
 
     if (!dataTrabajador.success) {
-      alert("Número de empleado no registrado");
+      const hint = dataTrabajador.hint ? `\n\n${dataTrabajador.hint}` : "";
+      if (resTrabajador.status >= 500 || dataTrabajador.error === "error_db") {
+        alert(
+          "Error en el servidor o en la base de datos (revisa MySQL, .env y que exista la tabla trabajadores)." +
+            hint
+        );
+      } else {
+        alert("Número de empleado no registrado." + hint);
+      }
       return;
     }
 
@@ -242,7 +401,9 @@ setPuerta("");
 
     
     if (buscaEstacionamiento === true) {
-      onLogin({
+      const accesoPermitido = await validarPuertaDisponible();
+      if (!accesoPermitido) return;
+      commitSessionAndGoParking({
         user: trabajador.numero_empleado,
         nombre: trabajador.nombre,
         apellido_paterno: trabajador.apellido_paterno,
@@ -254,8 +415,6 @@ setPuerta("");
         placas: trabajador.placas,
         carrera: trabajador.departamento
       });
-
-      navigate("/parking");
       return;
     }
 
@@ -297,10 +456,94 @@ setPuerta("");
   }}
 >
   Continuar
+            </button>
 
-                
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={irAPanelAdmin}
+            >
+              Panel bloqueo maestro (Admin)
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+if (pantalla === "admin") {
+  return (
+    <div className="page login-page">
+      <div className="card">
+        <h1 className="guest-title">Bloqueo maestro</h1>
+        {adminEstado === "loading" && (
+          <p className="muted center-text">{adminMensaje}</p>
+        )}
+        {adminEstado === "error" && (
+          <p className="muted center-text" style={{ color: "#ff9a9a" }}>
+            {adminMensaje}
+          </p>
+        )}
+        <p className="selected-door">
+          Administrador: <strong>{adminTrabajador?.nombre}</strong> (
+          {adminTrabajador?.numero_empleado})
+        </p>
+
+        <p className="muted center-text">
+          Selecciona las puertas físicas que deseas clausurar. Al estar
+          bloqueadas, ningún perfil (estudiante, trabajador, invitado) podrá
+          validar acceso por esa puerta.
+        </p>
+
+        <div className="door-buttons" style={{ flexDirection: "column", gap: "0.5rem" }}>
+          {puertasAdmin.map((p) => (
+            <label
+              key={p.id}
+              className="muted"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "0.5rem 0"
+              }}
+            >
+              <span>
+                <strong>{p.nombre || p.codigo}</strong>{" "}
+                {p.locked ? "(Bloqueada)" : "(Desbloqueada)"}
+              </span>
+              <input
+                type="checkbox"
+                checked={puertasSeleccionadas.includes(p.id)}
+                onChange={(e) => {
+                  setPuertasSeleccionadas((current) => {
+                    if (e.target.checked) {
+                      return [...current, p.id];
+                    }
+                    return current.filter((id) => id !== p.id);
+                  });
+                }}
+              />
+            </label>
+          ))}
+        </div>
+
+        <div className="student-actions" style={{ marginTop: "1rem" }}>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              setPantalla("trabajador");
+              setPuertasSeleccionadas([]);
+              setAdminEstado("idle");
+              setAdminMensaje("");
+            }}
+          >
+            Volver
+          </button>
+          <button type="button" className="btn" onClick={aplicarBloqueoMaestro}>
+            Bloquear puertas seleccionadas
+          </button>
         </div>
       </div>
     </div>
