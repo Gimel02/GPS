@@ -162,8 +162,8 @@ app.post("/entradas-dia", (req, res) => {
   );
 });
 
-app.listen(3002, () => {
-  console.log("🔥 Backend corriendo en http://localhost:3002");
+app.listen(3000, () => {
+  console.log("🔥 Backend corriendo en http://localhost:3000");
 });
 
 
