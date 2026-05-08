@@ -16,16 +16,25 @@ const db = mysql.createConnection({
   database: process.env.DB_NAME
 });
 
+db.connect((err) => {
+  if (err) {
+    console.log("ERROR MYSQL");
+    console.log(err);
+  } else {
+    console.log("MYSQL CONECTADO");
+  }
+});
+
 //  LOGIN
 app.post("/login", (req, res) => {
-  const { numero_control, password } = req.body;
+  const { numero_control } = req.body;
 
   const sql = `
     SELECT * FROM estudiantes 
-    WHERE numero_control = ? AND password = ?
+    WHERE numero_control = ?
   `;
 
-  db.query(sql, [numero_control, password], (err, result) => {
+  db.query(sql, [numero_control], (err, result) => {
     if (err) {
       console.error(err);
       return res.status(500).json({ success: false });

@@ -43,3 +43,26 @@ CREATE TABLE IF NOT EXISTS entradas_del_dia (
   color VARCHAR(50),
   fecha_hora DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+INSERT INTO estudiantes VALUES
+(
+  '22130851',
+  'Luis',
+  'Murillo',
+  'Aguero',
+  '1234',
+  'Nissan',
+  'Rojo',
+  'ABC123',
+  'TICS'
+);
+INSERT INTO cajones (zona, numero, ocupado)
+VALUES
+
+('puerta4',1,0),
+('puerta4',2,0),
+('puerta4',3,0),
+('puerta4',4,0),
+('puerta4',5,0),
+('puerta4',6,0),
+('puerta4',7,0),
+('puerta4',8,0);

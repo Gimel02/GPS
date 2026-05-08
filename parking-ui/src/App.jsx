@@ -16,6 +16,9 @@ function Login({ onLogin }) {
   const [numeroEmpleado, setNumeroEmpleado] = useState("");
 const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
 
+  const [numeroControl, setNumeroControl]= useState("");
+  const [buscaEstudianteEst, setBuscaEstudianteEst] = useState(null);
+
   const [placas, setPlacas] = useState("");
   const [marca, setMarca] = useState("");
   const [color, setColor] = useState("");
@@ -39,8 +42,8 @@ const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
     setPantalla("invitado");
   } else if (tipo === "trabajador") {
     setPantalla("trabajador");
-  } else {
-    alert("Falta programar estudiante");
+  } else if(tipo === "estudiante"){
+    setPantalla("estudiante");
   }
 
   }
@@ -126,6 +129,173 @@ setPuerta("");
 }
     
   }
+  //Pantalla de estudiante
+  if (pantalla === "estudiante") {
+  return (
+    <div className="page center-page">
+      <div className="card login-card">
+        <div className="logo-circle">🎓</div>
+
+        <h1 className="guest-title">ESTUDIANTE</h1>
+
+        <p className="selected-door">
+          {puerta.replace("puerta", "Puerta ")} seleccionada
+        </p>
+
+        <div className="form">
+
+          <div className="vehicle-question">
+            <span>¿Busca estacionamiento?</span>
+
+            <div className="availability-actions">
+              <button
+                type="button"
+                className={
+                  buscaEstudianteEst === true
+                    ? "status-pill yes active"
+                    : "status-pill yes"
+                }
+                onClick={() => setBuscaEstudianteEst(true)}
+              >
+                Sí
+              </button>
+
+              <button
+                type="button"
+                className={
+                  buscaEstudianteEst === false
+                    ? "status-pill no active"
+                    : "status-pill no"
+                }
+                onClick={() => setBuscaEstudianteEst(false)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+
+          <label>
+            Número de control
+            <input
+              type="text"
+              value={numeroControl}
+              onChange={(e) => setNumeroControl(e.target.value)}
+              placeholder="Ej. 22100000"
+            />
+          </label>
+
+          <div className="student-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setPantalla("seleccion")}
+            >
+              Volver
+            </button>
+
+            <button
+              className="btn"
+              onClick={async () => {
+
+                if (!numeroControl.trim()) {
+                  alert("Ingresa número de control");
+                  return;
+                }
+
+                if (buscaEstudianteEst === null) {
+                  alert("Selecciona si busca estacionamiento");
+                  return;
+                }
+
+                try {
+
+                  const resEstudiante = await fetch("http://localhost:3000/login", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                      numero_control: numeroControl
+                      
+                    })
+                  });
+
+                  const dataEstudiante = await resEstudiante.json();
+
+                  if (!dataEstudiante.success) {
+                    alert("Número de control no registrado");
+                    return;
+                  }
+
+                  const estudiante = dataEstudiante.user;
+
+                  if (buscaEstudianteEst === true) {
+
+                    onLogin({
+                      user: estudiante.numero_control,
+                      nombre: estudiante.nombre,
+                      apellido_paterno: estudiante.apellido_paterno,
+                      apellido_materno: estudiante.apellido_materno,
+                      tipo: "estudiante",
+                      puerta,
+                      marca_auto: estudiante.marca_auto,
+                      color: estudiante.color,
+                      placas: estudiante.placas,
+                      carrera: estudiante.carrera
+                    });
+
+                    navigate("/parking");
+                    return;
+                  }
+
+                  const res = await fetch("http://localhost:3000/entradas-dia", {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                      tipo: "estudiante",
+                      clave: estudiante.numero_control,
+                      puerta,
+                      proposito: "Entrada sin estacionamiento",
+                      nombre: estudiante.nombre,
+                      apellido: estudiante.apellido_paterno,
+                      entra_vehiculo: false
+                    })
+                  });
+
+                  const data = await res.json();
+
+                  if (data.success) {
+
+                    alert("Acceso permitido. Registrado en bitácora.");
+
+                    setNumeroControl("");
+                    setBuscaEstudianteEst(null);
+                    setTipo("");
+                    setPuerta("");
+                    setPantalla("seleccion");
+
+                  } else {
+                    alert("Error al guardar");
+                  }
+
+                } catch (error) {
+                  console.error(error);
+                  alert("Error conectando con el servidor");
+                }
+
+              }}
+            >
+              Continuar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+  
 
   if (pantalla === "trabajador") {
   return (
