@@ -119,47 +119,246 @@ app.post("/liberar", (req, res) => {
 
 app.post("/entradas-dia", (req, res) => {
   const {
-    tipo,
-    clave,
-    puerta,
-    proposito,
-    nombre,
-    apellido,
-    entra_vehiculo,
-    placas,
-    marca,
-    color
-  } = req.body;
+  tipo,
+  clave,
+  puerta,
+  proposito,
+  nombre,
+  apellido,
+  entra_vehiculo,
+  placas,
+  marca,
+  color,
+  id_cajon,
+  numero_cajon
+} = req.body;
 
-  const sql = `
-    INSERT INTO entradas_del_dia
-    (tipo, clave, puerta, proposito, nombre, apellido, entra_vehiculo, placas, marca, color)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+  function insertarEntrada(claveFinal) {
+    const sql = `
+      INSERT INTO entradas_del_dia
+(tipo, clave, puerta, proposito, nombre, apellido, entra_vehiculo, placas, marca, color, id_cajon, numero_cajon, estado)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'dentro')
+    `;
 
-  db.query(
-    sql,
-    [
-      tipo,
-      clave || null,
-      puerta,
-      proposito,
-      nombre,
-      apellido,
-      entra_vehiculo,
-      placas || null,
-      marca || null,
-      color || null
-    ],
-    (err, result) => {
+    db.query(
+      sql,
+      [
+  tipo,
+  claveFinal || null,
+  puerta,
+  proposito,
+  nombre,
+  apellido,
+  entra_vehiculo,
+  placas || null,
+  marca || null,
+  color || null,
+  id_cajon || null,
+  numero_cajon || null
+],
+      (err, result) => {
+        if (err) {
+          console.error(err);
+          return res.status(500).json({ success: false });
+        }
+
+        res.json({
+          success: true,
+          id: result.insertId,
+          clave: claveFinal
+        });
+      }
+    );
+  }
+
+  if (tipo === "invitado") {
+    const sqlClave = `
+      SELECT clave
+      FROM entradas_del_dia
+      WHERE tipo = 'invitado' AND clave LIKE 'INV-%'
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+
+    db.query(sqlClave, (err, result) => {
       if (err) {
         console.error(err);
         return res.status(500).json({ success: false });
       }
 
-      res.json({ success: true, id: result.insertId });
+      let siguiente = 1;
+
+      if (result.length > 0 && result[0].clave) {
+        const ultimoNumero = parseInt(result[0].clave.replace("INV-", ""), 10);
+        if (!isNaN(ultimoNumero)) {
+          siguiente = ultimoNumero + 1;
+        }
+      }
+
+      const claveInvitado = `INV-${String(siguiente).padStart(6, "0")}`;
+      insertarEntrada(claveInvitado);
+    });
+
+    return;
+  }
+
+  insertarEntrada(clave);
+});
+
+app.post("/estudiante", (req, res) => {
+  const { numero_control } = req.body;
+
+  const sql = `
+    SELECT * FROM estudiantes
+    WHERE numero_control = ?
+  `;
+
+  db.query(sql, [numero_control], (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false });
     }
-  );
+
+    if (result.length > 0) {
+      res.json({ success: true, estudiante: result[0] });
+    } else {
+      res.json({ success: false });
+    }
+  });
+});
+
+app.get("/entradas-dia", (req, res) => {
+  const sql = `
+    SELECT 
+      id,
+      tipo,
+      clave,
+      puerta,
+      proposito,
+      nombre,
+      apellido,
+      entra_vehiculo,
+      placas,
+      marca,
+      color,
+      fecha_hora
+    FROM entradas_del_dia
+    ORDER BY fecha_hora DESC
+  `;
+
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false });
+    }
+
+    res.json(result);
+  });
+});
+
+app.get("/buscar-salida/:valor", (req, res) => {
+  const valor = req.params.valor;
+
+  const sql = `
+    SELECT *
+    FROM entradas_del_dia
+    WHERE estado = 'dentro'
+      AND (
+        clave = ?
+        OR placas = ?
+        OR nombre = ?
+      )
+    ORDER BY fecha_hora DESC
+    LIMIT 1
+  `;
+
+  db.query(sql, [valor, valor, valor], (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false });
+    }
+
+    if (result.length === 0) {
+      return res.json({ success: false, message: "No se encontró entrada activa" });
+    }
+
+    res.json({ success: true, entrada: result[0] });
+  });
+}); 
+
+app.post("/registrar-salida", (req, res) => {
+  const { id_entrada, id_cajon } = req.body;
+
+  const actualizarEntrada = `
+    UPDATE entradas_del_dia
+    SET estado = 'salio',
+        fecha_salida = NOW()
+    WHERE id = ? AND estado = 'dentro'
+  `;
+
+  db.query(actualizarEntrada, [id_entrada], (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.json({ success: false, message: "La entrada ya fue cerrada" });
+    }
+
+    if (!id_cajon) {
+      return res.json({ success: true });
+    }
+
+    const liberarCajon = `
+      UPDATE cajones
+      SET ocupado = 0,
+          usuario = NULL
+      WHERE id = ?
+    `;
+
+    db.query(liberarCajon, [id_cajon], (err2) => {
+      if (err2) {
+        console.error(err2);
+        return res.status(500).json({ success: false });
+      }
+
+      res.json({ success: true });
+    });
+  });
+});
+
+app.get("/registros-activos", (req, res) => {
+  const sql = `
+    SELECT 
+      id,
+      tipo,
+      clave,
+      puerta,
+      proposito,
+      nombre,
+      apellido,
+      entra_vehiculo,
+      placas,
+      marca,
+      color,
+      id_cajon,
+      numero_cajon,
+      fecha_hora,
+      estado
+    FROM entradas_del_dia
+    WHERE estado = 'dentro'
+    ORDER BY fecha_hora DESC
+  `;
+
+  db.query(sql, (err, result) => {
+    if (err) {
+      console.error(err);
+      return res.status(500).json({ success: false });
+    }
+
+    res.json(result);
+  });
 });
 
 app.listen(3000, () => {

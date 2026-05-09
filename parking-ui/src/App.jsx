@@ -4,7 +4,7 @@ import { Html5QrcodeScanner } from "html5-qrcode";
 
 function Login({ onLogin }) {
   const navigate = useNavigate();
-
+  const [puertasLlenas, setPuertasLlenas] = useState({});
   const [tipo, setTipo] = useState("");
   const [puerta, setPuerta] = useState("");
   const [pantalla, setPantalla] = useState("seleccion");
@@ -18,9 +18,14 @@ function Login({ onLogin }) {
   const [numeroEmpleado, setNumeroEmpleado] = useState("");
   const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
 
+  const [menuAbierto, setMenuAbierto] = useState(false);
   const [placas, setPlacas] = useState("");
   const [marca, setMarca] = useState("");
   const [color, setColor] = useState("");
+
+  const [numeroControl, setNumeroControl] = useState("");
+const [buscaEstacionamientoEstudiante, setBuscaEstacionamientoEstudiante] = useState(null);
+const [scannerEstudianteActivo, setScannerEstudianteActivo] = useState(false);
 
   async function validarTrabajadorYContinuar(numeroLeido) {
   const numeroLimpio = numeroLeido.trim();
@@ -152,12 +157,82 @@ function Login({ onLogin }) {
   };
 }, [scannerActivo, pantalla]);
 
+useEffect(() => {
+  if (!scannerEstudianteActivo || pantalla !== "estudiante") return;
+
+  const scanner = new Html5QrcodeScanner(
+    "qr-reader-estudiante",
+    {
+      fps: 10,
+      qrbox: {
+        width: 250,
+        height: 250
+      }
+    },
+    false
+  );
+
+  scanner.render(
+    async (decodedText) => {
+      setNumeroControl(decodedText);
+
+      try {
+        await scanner.clear();
+      } catch (error) {
+        console.error("Error al cerrar scanner:", error);
+      }
+
+      setScannerEstudianteActivo(false);
+      await validarEstudianteYContinuar(decodedText);
+    },
+    () => {}
+  );
+
+  return () => {
+    scanner.clear().catch(() => {});
+  };
+}, [scannerEstudianteActivo, pantalla, buscaEstacionamientoEstudiante]);
+
+useEffect(() => {
+  if (pantalla === "seleccion") {
+    cargarEstadoPuertas();
+  }
+}, [pantalla]);
+
+useEffect(() => {
+  if (puerta && puertasLlenas[puerta]) {
+    setPuerta("");
+  }
+}, [puertasLlenas, puerta]);
+
   function seleccionarInvitado() {
     setTipo("invitado");
   }
 
+  async function cargarEstadoPuertas() {
+  const puertas = ["puerta1", "puerta2", "puerta3", "puerta4"];
+  const estado = {};
+
+  try {
+    for (const p of puertas) {
+      const res = await fetch(`http://localhost:3000/cajones/${p}`);
+      const data = await res.json();
+
+      const llena =
+        data.length > 0 &&
+        data.every((c) => c.ocupado === 1 || c.ocupado === true);
+
+      estado[p] = llena;
+    }
+
+    setPuertasLlenas(estado);
+  } catch (error) {
+    console.error("Error cargando estado de puertas:", error);
+  }
+}
+
   function continuarSeleccion() {
-   if (!tipo) {
+  if (!tipo) {
     alert("Selecciona Estudiante, Trabajador o Invitado");
     return;
   }
@@ -171,11 +246,10 @@ function Login({ onLogin }) {
     setPantalla("invitado");
   } else if (tipo === "trabajador") {
     setPantalla("trabajador");
-  } else {
-    alert("Falta programar estudiante");
+  } else if (tipo === "estudiante") {
+    setPantalla("estudiante");
   }
-
-  }
+}
 
   async function handleInvitadoSubmit(e) {
     e.preventDefault();
@@ -197,7 +271,7 @@ function Login({ onLogin }) {
       }
 
       onLogin({
-        user: `INV-${Date.now()}`,
+        user: null,
         nombre,
         apellido_paterno: apellido,
         tipo: "invitado",
@@ -222,7 +296,7 @@ function Login({ onLogin }) {
     },
     body: JSON.stringify({
   tipo: "invitado",
-  clave: `INV-${Date.now()}`,
+  clave: null,
   puerta,
   proposito,
   nombre,
@@ -259,6 +333,200 @@ setPuerta("");
     
   }
 
+async function validarEstudianteYContinuar(numeroLeido) {
+  const numeroLimpio = numeroLeido.trim();
+
+  if (!numeroLimpio) {
+    alert("Ingresa número de control");
+    return;
+  }
+
+  if (buscaEstacionamientoEstudiante === null) {
+    alert("Selecciona si busca estacionamiento");
+    return;
+  }
+
+  try {
+    const resEstudiante = await fetch("http://localhost:3000/estudiante", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        numero_control: numeroLimpio
+      })
+    });
+
+    const dataEstudiante = await resEstudiante.json();
+
+    if (!dataEstudiante.success) {
+      alert("Estudiante no reconocido");
+      setNumeroControl("");
+      return;
+    }
+
+    const estudiante = dataEstudiante.estudiante;
+
+    if (buscaEstacionamientoEstudiante === true) {
+      onLogin({
+        user: estudiante.numero_control,
+        nombre: estudiante.nombre,
+        apellido_paterno: estudiante.apellido_paterno,
+        apellido_materno: estudiante.apellido_materno,
+        tipo: "estudiante",
+        puerta,
+        marca_auto: estudiante.marca_auto,
+        color: estudiante.color,
+        placas: estudiante.placas,
+        carrera: estudiante.carrera
+      });
+
+      navigate("/parking");
+      return;
+    }
+
+    const res = await fetch("http://localhost:3000/entradas-dia", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        tipo: "estudiante",
+        clave: estudiante.numero_control,
+        puerta,
+        proposito: "Entrada sin estacionamiento",
+        nombre: estudiante.nombre,
+        apellido: estudiante.apellido_paterno,
+        entra_vehiculo: false,
+        placas: null,
+        marca: null,
+        color: null
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert("Acceso permitido. Estudiante registrado en bitácora.");
+
+      setNumeroControl("");
+      setBuscaEstacionamientoEstudiante(null);
+      setTipo("");
+      setPuerta("");
+      setPantalla("seleccion");
+    } else {
+      alert("Error al guardar");
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Error conectando con el servidor");
+  }
+}
+
+//pantalla de estudiante
+if (pantalla === "estudiante") {
+  return (
+    <div className="page center-page">
+      <div className="card login-card">
+        <div className="logo-circle">🎓</div>
+
+        <h1 className="guest-title">ESTUDIANTE</h1>
+
+        <p className="selected-door">
+          {puerta.replace("puerta", "Puerta ")} seleccionada
+        </p>
+
+        <div className="form">
+          <div className="vehicle-question">
+            <span>¿Busca estacionamiento?</span>
+
+            <div className="availability-actions">
+              <button
+                type="button"
+                className={
+                  buscaEstacionamientoEstudiante === true
+                    ? "status-pill yes active"
+                    : "status-pill yes"
+                }
+                onClick={() => setBuscaEstacionamientoEstudiante(true)}
+              >
+                Sí
+              </button>
+
+              <button
+                type="button"
+                className={
+                  buscaEstacionamientoEstudiante === false
+                    ? "status-pill no active"
+                    : "status-pill no"
+                }
+                onClick={() => setBuscaEstacionamientoEstudiante(false)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+
+          <div style={{ textAlign: "center", margin: "20px 0" }}>
+            {!scannerEstudianteActivo && (
+              <button
+                type="button"
+                className="qr-fake-box"
+                onClick={() => setScannerEstudianteActivo(true)}
+              >
+                📷 Escanear QR
+              </button>
+            )}
+
+            {scannerEstudianteActivo && (
+              <div className="qr-reader-box">
+                <div id="qr-reader-estudiante"></div>
+
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setScannerEstudianteActivo(false)}
+                  style={{ marginTop: "12px" }}
+                >
+                  Cancelar escaneo
+                </button>
+              </div>
+            )}
+          </div>
+
+          <label>
+            Número de control
+            <input
+              type="text"
+              value={numeroControl}
+              onChange={(e) => setNumeroControl(e.target.value)}
+              placeholder="Ej. 22130843"
+            />
+          </label>
+
+          <div className="student-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setPantalla("seleccion")}
+            >
+              Volver
+            </button>
+
+            <button
+              className="btn"
+              onClick={() => validarEstudianteYContinuar(numeroControl)}
+            >
+              Continuar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+//pantalla del trabajador
   if (pantalla === "trabajador") {
   return (
     <div className="page center-page">
@@ -363,6 +631,7 @@ setPuerta("");
   );
 }
 
+//pantalla del invitado
   if (pantalla === "invitado") {
     return (
       <div className="page center-page">
@@ -488,9 +757,56 @@ setPuerta("");
     );
   }
 
+  //seleccionarestudiante, trabajador o invitado y seleccionar la puerta
   return (
     <div className="page center-page">
       <div className="card login-card">
+         <button
+  type="button"
+  className="hamburger-btn"
+  onClick={() => setMenuAbierto(true)}
+>
+  ☰
+</button>
+
+{menuAbierto && (
+  <div className="side-menu-overlay" onClick={() => setMenuAbierto(false)}>
+    <aside className="side-menu" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        className="close-menu-btn"
+        onClick={() => setMenuAbierto(false)}
+      >
+        ✕
+      </button>
+
+      <h2>Menú</h2>
+
+      <button
+        type="button"
+        className="btn menu-action-btn"
+        onClick={() => navigate("/bitacora")}
+      >
+        Consultar bitácora del día
+      </button>
+       <button
+        type="button"
+        className="btn menu-action-btn"
+        onClick={() => navigate("/registros-activos")}
+      >
+        Ver registros activos
+      </button>
+            <button
+        type="button"
+        className="btn menu-action-btn"
+        onClick={() => navigate("/salida")}
+      >
+        Registrar salida
+      </button>
+           
+    </aside>
+  </div>
+)}
         <div className="logo-circle">?</div>
 
         <h1>Favor de seleccionar</h1>
@@ -535,16 +851,34 @@ setPuerta("");
         </p>
 
         <div className="door-buttons">
-          {["puerta1", "puerta2", "puerta3", "puerta4"].map((p, index) => (
-            <button
-              key={p}
-              className={puerta === p ? "btn active-btn" : "btn btn-ghost"}
-              onClick={() => setPuerta(p)}
-            >
-              Puerta {index + 1}
-            </button>
-          ))}
-        </div>
+  {["puerta1", "puerta2", "puerta3", "puerta4"].map((p, index) => {
+    const estaLlena = puertasLlenas[p];
+
+    return (
+      <button
+        key={p}
+        type="button"
+        className={
+          estaLlena
+            ? "btn door-full"
+            : puerta === p
+            ? "btn active-door"
+            : "btn btn-ghost"
+        }
+        onClick={() => {
+          if (estaLlena) {
+            alert("Puerta sin estacionamiento disponible");
+            return;
+          }
+
+          setPuerta(p);
+        }}
+      >
+        Puerta {index + 1}
+      </button>
+    );
+  })}
+</div>
 
         <button className="btn continue-selection-btn" onClick={continuarSeleccion}>
           Continuar
@@ -658,18 +992,19 @@ await fetch("http://localhost:3000/entradas-dia", {
     "Content-Type": "application/json"
   },
   body: JSON.stringify({
-    tipo: session.tipo,
-    clave: session.user,
-    puerta: session.puerta,
-    proposito: session.proposito || "Entrada con estacionamiento",
-    nombre: session.nombre,
-    apellido: session.apellido_paterno || "",
-    entra_vehiculo: true,
-    placas: session.placas || null,
-    marca: session.marca_auto || null,
-    color: session.color || null,
-    clave: session.user
-  })
+  tipo: session.tipo,
+  clave: session.user,
+  puerta: session.puerta,
+  proposito: session.proposito || "Entrada con estacionamiento",
+  nombre: session.nombre,
+  apellido: session.apellido_paterno || "",
+  entra_vehiculo: true,
+  placas: session.placas || null,
+  marca: session.marca_auto || null,
+  color: session.color || null,
+  id_cajon: cajon.id,
+  numero_cajon: cajon.numero
+})
 });
 
 alert(
@@ -767,7 +1102,11 @@ navigate("/login");
   </p>
 
   <h2>Consultando disponibilidad</h2>
-
+{disponible === false && (
+  <p className="full-door-message">
+    Esta puerta tiene sus 40 cajones ocupados.
+  </p>
+)}
           <div className="availability-box">
             <span className="muted">¿Disponible?</span>
             <div className="availability-actions">
@@ -826,11 +1165,319 @@ navigate("/login");
           </div>
 
           <div className="actions">
-            <button className="btn" onClick={handleReserve}>
-              Apartar
-            </button>
+            <button
+  className={disponible === false ? "btn btn-disabled-red" : "btn"}
+  onClick={handleReserve}
+  disabled={disponible === false}
+>
+  {disponible === false ? "Puerta llena" : "Apartar"}
+</button>
           </div>
         </aside>
+      </main>
+    </div>
+  );
+}
+
+//salida
+function Salida() {
+  const navigate = useNavigate();
+  const [busqueda, setBusqueda] = useState("");
+  const [entrada, setEntrada] = useState(null);
+
+  async function buscarEntrada() {
+    if (!busqueda.trim()) {
+      alert("Escribe clave, placas o nombre");
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:3000/buscar-salida/${busqueda.trim()}`);
+      const data = await res.json();
+
+      if (!data.success) {
+        alert("No se encontró una entrada activa");
+        setEntrada(null);
+        return;
+      }
+
+      setEntrada(data.entrada);
+    } catch (error) {
+      console.error(error);
+      alert("Error conectando con el servidor");
+    }
+  }
+
+  async function registrarSalida() {
+    if (!entrada) return;
+
+    const confirmar = window.confirm(
+      "¿Confirmas registrar la salida y liberar el cajón si aplica?"
+    );
+
+    if (!confirmar) return;
+
+    try {
+      const res = await fetch("http://localhost:3000/registrar-salida", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id_entrada: entrada.id,
+          id_cajon: entrada.id_cajon
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        alert("Salida registrada correctamente.");
+
+        setBusqueda("");
+        setEntrada(null);
+        navigate("/login");
+      } else {
+        alert("No se pudo registrar la salida");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error conectando con el servidor");
+    }
+  }
+
+  return (
+    <div className="page center-page">
+      <div className="card salida-card">
+        <h1 className="guest-title">REGISTRAR SALIDA</h1>
+
+        <p className="muted">
+          Busca por folio, número de control, número de empleado o placas.
+        </p>
+
+        <label>
+          Clave o placas
+          <input
+            type="text"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Ej. INV-000001, 10953 o EG156F"
+          />
+        </label>
+
+        <div className="student-actions">
+          <button className="btn btn-ghost" onClick={() => navigate("/login")}>
+            Volver
+          </button>
+
+          <button className="btn" onClick={buscarEntrada}>
+            Buscar
+          </button>
+        </div>
+
+        {entrada && (
+          <div className="salida-result">
+            <h2>Entrada activa encontrada</h2>
+
+            <p><strong>Tipo:</strong> {entrada.tipo}</p>
+            <p><strong>Clave:</strong> {entrada.clave}</p>
+            <p><strong>Nombre:</strong> {entrada.nombre} {entrada.apellido}</p>
+            <p><strong>Puerta:</strong> {entrada.puerta}</p>
+            <p><strong>Propósito:</strong> {entrada.proposito}</p>
+            <p><strong>Vehículo:</strong> {entrada.entra_vehiculo ? "Sí" : "No"}</p>
+            <p><strong>Placas:</strong> {entrada.placas || "-"}</p>
+            <p><strong>Marca:</strong> {entrada.marca || "-"}</p>
+            <p><strong>Color:</strong> {entrada.color || "-"}</p>
+            <p><strong>Cajón:</strong> {entrada.numero_cajon || "Sin cajón"}</p>
+            <p><strong>Entrada:</strong> {entrada.fecha_hora}</p>
+
+            <button className="btn release-btn" onClick={registrarSalida}>
+              Registrar salida y liberar cajón
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+//bitacora
+function Bitacora() {
+  const navigate = useNavigate();
+  const [entradas, setEntradas] = useState([]);
+
+  useEffect(() => {
+    async function cargarBitacora() {
+      try {
+        const res = await fetch("http://localhost:3000/entradas-dia");
+        const data = await res.json();
+        setEntradas(data);
+      } catch (error) {
+        console.error(error);
+        alert("Error cargando la bitácora");
+      }
+    }
+
+    cargarBitacora();
+  }, []);
+
+  return (
+    <div className="page bitacora-page">
+      <header className="topbar">
+        <div>
+          <h2 className="topbar-title">Bitácora del día</h2>
+          <p className="muted">Registros guardados en entradas_del_dia</p>
+        </div>
+
+        <button className="btn btn-ghost" onClick={() => navigate("/login")}>
+          Volver
+        </button>
+      </header>
+
+      <main className="bitacora-container">
+        <section className="card bitacora-card">
+          <h2>Entradas registradas</h2>
+
+          <div className="table-wrapper">
+            <table className="bitacora-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Tipo</th>
+                  <th>Clave</th>
+                  <th>Puerta</th>
+                  <th>Propósito</th>
+                  <th>Nombre</th>
+                  <th>Apellido</th>
+                  <th>Vehículo</th>
+                  <th>Placas</th>
+                  <th>Marca</th>
+                  <th>Color</th>
+                  <th>Fecha/Hora</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {entradas.length === 0 ? (
+                  <tr>
+                    <td colSpan="12" className="empty-table">
+                      No hay registros todavía
+                    </td>
+                  </tr>
+                ) : (
+                  entradas.map((entrada) => (
+                    <tr key={entrada.id}>
+                      <td>{entrada.id}</td>
+                      <td>{entrada.tipo}</td>
+                      <td>{entrada.clave || "-"}</td>
+                      <td>{entrada.puerta}</td>
+                      <td>{entrada.proposito}</td>
+                      <td>{entrada.nombre}</td>
+                      <td>{entrada.apellido}</td>
+                      <td>{entrada.entra_vehiculo ? "Sí" : "No"}</td>
+                      <td>{entrada.placas || "-"}</td>
+                      <td>{entrada.marca || "-"}</td>
+                      <td>{entrada.color || "-"}</td>
+                      <td>{entrada.fecha_hora}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+//registros
+function RegistrosActivos() {
+  const navigate = useNavigate();
+  const [registros, setRegistros] = useState([]);
+
+  useEffect(() => {
+    async function cargarRegistrosActivos() {
+      try {
+        const res = await fetch("http://localhost:3000/registros-activos");
+        const data = await res.json();
+        setRegistros(data);
+      } catch (error) {
+        console.error(error);
+        alert("Error cargando registros activos");
+      }
+    }
+
+    cargarRegistrosActivos();
+  }, []);
+
+  return (
+    <div className="page bitacora-page">
+      <header className="topbar">
+        <div>
+          <h2 className="topbar-title">Registros activos</h2>
+          <p className="muted">Personas que siguen dentro del sistema</p>
+        </div>
+
+        <button className="btn btn-ghost" onClick={() => navigate("/login")}>
+          Volver
+        </button>
+      </header>
+
+      <main className="bitacora-container">
+        <section className="card bitacora-card">
+          <h2>Personas dentro</h2>
+
+          <div className="table-wrapper">
+            <table className="bitacora-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Tipo</th>
+                  <th>Clave</th>
+                  <th>Puerta</th>
+                  <th>Nombre</th>
+                  <th>Apellido</th>
+                  <th>Vehículo</th>
+                  <th>Placas</th>
+                  <th>Cajón</th>
+                  <th>Entrada</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {registros.length === 0 ? (
+                  <tr>
+                    <td colSpan="11" className="empty-table">
+                      No hay personas dentro actualmente
+                    </td>
+                  </tr>
+                ) : (
+                  registros.map((registro) => (
+                    <tr key={registro.id}>
+                      <td>{registro.id}</td>
+                      <td>{registro.tipo}</td>
+                      <td>{registro.clave || "-"}</td>
+                      <td>{registro.puerta}</td>
+                      <td>{registro.nombre}</td>
+                      <td>{registro.apellido}</td>
+                      <td>{registro.entra_vehiculo ? "Sí" : "No"}</td>
+                      <td>{registro.placas || "-"}</td>
+                      <td>{registro.numero_cajon || "Sin cajón"}</td>
+                      <td>{registro.fecha_hora}</td>
+                      <td>
+                        <span className="estado-activo">
+                          {registro.estado}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </main>
     </div>
   );
@@ -846,6 +1493,9 @@ export default function App() {
         element={<Navigate to={session ? "/parking" : "/login"} replace />}
       />
       <Route path="/login" element={<Login onLogin={setSession} />} />
+      <Route path="/bitacora" element={<Bitacora />} />
+      <Route path="/salida" element={<Salida />} />
+      <Route path="/registros-activos" element={<RegistrosActivos />} />
       <Route
         path="/parking"
         element={

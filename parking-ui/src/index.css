@@ -11,9 +11,14 @@
 
 body {
   margin: 0;
-  min-width: 320px;
   min-height: 100vh;
-  background: linear-gradient(180deg, #0b1220 0%, #111a2e 100%);
+  background:
+    linear-gradient(rgba(15, 23, 42, 0.15), rgba(15, 23, 42, 0.15)),
+    url("./assets/Gato.png");
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-attachment: fixed;
 }
 
 button,
@@ -314,8 +319,8 @@ input::placeholder {
 .door-buttons {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
-  margin: 14px 0 20px;
+  gap: 12px;
+  width: 100%;
 }
 
 .active-btn {
@@ -401,3 +406,211 @@ input::placeholder {
   border-radius: 14px;
   overflow: hidden;
 }
+
+.btn-disabled-red {
+  background: #dc2626 !important;
+  color: white !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+  border: none !important;
+}
+
+.full-door-message {
+  background: rgba(220, 38, 38, 0.18);
+  border: 1px solid #dc2626;
+  color: #fecaca;
+  padding: 12px;
+  border-radius: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+.door-full,
+.door-full:disabled,
+.btn.door-full,
+.btn.door-full:disabled {
+  background: #dc2626 !important;
+  color: white !important;
+  cursor: not-allowed !important;
+  opacity: 1 !important;
+  border: 2px solid #991b1b !important;
+  box-shadow: none !important;
+}
+
+.door-full:hover,
+.btn.door-full:hover {
+  background: #dc2626 !important;
+  color: white !important;
+}
+
+.hamburger-btn {
+  position: absolute;
+  top: 22px;
+  right: 24px;
+  width: 48px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid #374151;
+  background: #2d3748;
+  color: #e5e7eb;
+  font-size: 1.8rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hamburger-btn:hover {
+  background: #374151;
+}
+
+.side-menu-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 50;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.side-menu {
+  width: 340px;
+  height: 100vh;
+  background: #111827;
+  border-left: 1px solid #374151;
+  padding: 28px;
+  box-shadow: -12px 0 30px rgba(0, 0, 0, 0.35);
+}
+
+.close-menu-btn {
+  float: right;
+  background: transparent;
+  color: #e5e7eb;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+}
+
+.menu-action-btn {
+  width: 100%;
+  margin-top: 28px;
+}
+
+.bitacora-page {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.bitacora-container {
+  width: min(1400px, 95vw);
+  margin: 40px auto;
+}
+
+.bitacora-card {
+  width: 100%;
+}
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 20px;
+}
+
+.bitacora-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1100px;
+}
+
+.bitacora-table th,
+.bitacora-table td {
+  border-bottom: 1px solid #374151;
+  padding: 14px 12px;
+  text-align: left;
+  font-size: 0.95rem;
+}
+
+.bitacora-table th {
+  color: #86efac;
+  font-weight: 800;
+  background: rgba(17, 24, 39, 0.7);
+}
+
+.bitacora-table td {
+  color: #e5e7eb;
+}
+
+.empty-table {
+  text-align: center !important;
+  color: #9ca3af !important;
+  padding: 30px !important;
+}
+
+.door-buttons .btn {
+  white-space: nowrap;
+  min-width: 0;
+  width: 100%;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+.door-full,
+.btn.door-full {
+  background: #dc2626 !important;
+  color: white !important;
+  cursor: pointer !important;
+  opacity: 1 !important;
+  border: 2px solid #991b1b !important;
+  box-shadow: none !important;
+}
+
+.door-full:hover,
+.btn.door-full:hover {
+  background: #b91c1c !important;
+  color: white !important;
+}
+
+.salida-card {
+  width: min(720px, 92vw);
+  position: relative;
+}
+
+.salida-card label {
+  display: block;
+  margin-top: 24px;
+}
+
+.salida-card input {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.salida-result {
+  margin-top: 28px;
+  padding: 22px;
+  border: 1px solid #374151;
+  border-radius: 18px;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.salida-result h2 {
+  color: #86efac;
+  margin-bottom: 16px;
+}
+
+.salida-result p {
+  margin: 8px 0;
+  color: #e5e7eb;
+}
+
+.salida-result strong {
+  color: #f9fafb;
+}
+
+.estado-activo {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(134, 239, 172, 0.18);
+  color: #86efac;
+  font-weight: 800;
+  border: 1px solid #86efac;
+}
+
