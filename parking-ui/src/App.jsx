@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Html5QrcodeScanner } from "html5-qrcode";
 
 function Login({ onLogin }) {
   const navigate = useNavigate();
@@ -13,12 +14,143 @@ function Login({ onLogin }) {
   const [apellido, setApellido] = useState("");
   const [entraVehiculo, setEntraVehiculo] = useState(null);
 
+  const [scannerActivo, setScannerActivo] = useState(false);
   const [numeroEmpleado, setNumeroEmpleado] = useState("");
-const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
+  const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
 
   const [placas, setPlacas] = useState("");
   const [marca, setMarca] = useState("");
   const [color, setColor] = useState("");
+
+  async function validarTrabajadorYContinuar(numeroLeido) {
+  const numeroLimpio = numeroLeido.trim();
+
+  if (!numeroLimpio) {
+    alert("No se detectó número de empleado");
+    return;
+  }
+
+  if (buscaEstacionamiento === null) {
+    alert("Primero selecciona si busca estacionamiento");
+    return;
+  }
+
+  try {
+    const resTrabajador = await fetch("http://localhost:3000/trabajador", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        numero_empleado: numeroLimpio
+      })
+    });
+
+    const dataTrabajador = await resTrabajador.json();
+
+    if (!dataTrabajador.success) {
+      alert("Empleado no reconocido. Verifica el QR o escribe el número nuevamente.");
+      setNumeroEmpleado("");
+      setScannerActivo(false);
+      return;
+    }
+
+    const trabajador = dataTrabajador.trabajador;
+
+    if (buscaEstacionamiento === true) {
+      onLogin({
+        user: trabajador.numero_empleado,
+        nombre: trabajador.nombre,
+        apellido_paterno: trabajador.apellido_paterno,
+        apellido_materno: trabajador.apellido_materno,
+        tipo: "trabajador",
+        puerta,
+        marca_auto: trabajador.marca_auto,
+        color: trabajador.color,
+        placas: trabajador.placas,
+        carrera: trabajador.departamento
+      });
+
+      setScannerActivo(false);
+      navigate("/parking");
+      return;
+    }
+
+    const res = await fetch("http://localhost:3000/entradas-dia", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        tipo: "trabajador",
+        clave: trabajador.numero_empleado,
+        puerta,
+        proposito: "Entrada sin estacionamiento",
+        nombre: trabajador.nombre,
+        apellido: trabajador.apellido_paterno,
+        entra_vehiculo: false,
+        placas: null,
+        marca: null,
+        color: null
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert("Acceso permitido. Trabajador registrado en bitácora.");
+
+      setNumeroEmpleado("");
+      setBuscaEstacionamiento(null);
+      setTipo("");
+      setPuerta("");
+      setPantalla("seleccion");
+    } else {
+      alert("Error al guardar en bitácora");
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Error conectando con el servidor");
+  }
+}
+
+  useEffect(() => {
+  if (!scannerActivo || pantalla !== "trabajador") return;
+
+  const scanner = new Html5QrcodeScanner(
+    "qr-reader",
+    {
+      fps: 10,
+      qrbox: {
+        width: 250,
+        height: 250
+      }
+    },
+    false
+  );
+
+  scanner.render(
+  async (decodedText) => {
+    setNumeroEmpleado(decodedText);
+
+    try {
+      await scanner.clear();
+    } catch (error) {
+      console.error("Error al cerrar scanner:", error);
+    }
+
+    setScannerActivo(false);
+    await validarTrabajadorYContinuar(decodedText);
+  },
+    (error) => {
+      // No pasa nada, esto se dispara muchas veces mientras busca QR
+    }
+  );
+
+  return () => {
+    scanner.clear().catch(() => {});
+  };
+}, [scannerActivo, pantalla]);
 
   function seleccionarInvitado() {
     setTipo("invitado");
@@ -173,19 +305,31 @@ setPuerta("");
 
           {/* FAKE QR */}
           <div style={{ textAlign: "center", margin: "20px 0" }}>
-            <div style={{
-              width: "200px",
-              height: "120px",
-              border: "2px dashed #555",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto",
-              borderRadius: "10px"
-            }}>
-              📷 Escanear QR
-            </div>
-          </div>
+  {!scannerActivo && (
+    <button
+      type="button"
+      className="qr-fake-box"
+      onClick={() => setScannerActivo(true)}
+    >
+      📷 Escanear QR
+    </button>
+  )}
+
+  {scannerActivo && (
+    <div className="qr-reader-box">
+      <div id="qr-reader"></div>
+
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={() => setScannerActivo(false)}
+        style={{ marginTop: "12px" }}
+      >
+        Cancelar escaneo
+      </button>
+    </div>
+  )}
+</div>
 
           {/* INPUT REAL */}
           <label>
@@ -206,100 +350,12 @@ setPuerta("");
             >
               Volver
             </button>
-
             <button
               className="btn"
-              onClick={async () => {
-                if (!numeroEmpleado.trim()) {
-                  alert("Ingresa número de empleado");
-                  return;
-                }
-
-                if (buscaEstacionamiento === null) {
-                  alert("Selecciona si busca estacionamiento");
-                  return;
-                }
-
-               
-    const resTrabajador = await fetch("http://localhost:3000/trabajador", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        numero_empleado: numeroEmpleado
-      })
-    });
-
-    const dataTrabajador = await resTrabajador.json();
-
-    if (!dataTrabajador.success) {
-      alert("Número de empleado no registrado");
-      return;
-    }
-
-    const trabajador = dataTrabajador.trabajador;
-
-    
-    if (buscaEstacionamiento === true) {
-      onLogin({
-        user: trabajador.numero_empleado,
-        nombre: trabajador.nombre,
-        apellido_paterno: trabajador.apellido_paterno,
-        apellido_materno: trabajador.apellido_materno,
-        tipo: "trabajador",
-        puerta,
-        marca_auto: trabajador.marca_auto,
-        color: trabajador.color,
-        placas: trabajador.placas,
-        carrera: trabajador.departamento
-      });
-
-      navigate("/parking");
-      return;
-    }
-
-    try {
-      const res = await fetch("http://localhost:3000/entradas-dia", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-  tipo: "trabajador",
-  clave: trabajador.numero_empleado,
-  puerta,
-  proposito: "Entrada sin estacionamiento",
-  nombre: trabajador.nombre,
-  apellido: trabajador.apellido_paterno,
-  entra_vehiculo: false
-})
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        alert("Acceso permitido. Registrado en bitácora.");
-
-        // reset
-        setNumeroEmpleado("");
-        setBuscaEstacionamiento(null);
-        setTipo("");
-        setPuerta("");
-        setPantalla("seleccion");
-      } else {
-        alert("Error al guardar");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Error conectando con el servidor");
-    }
-  }}
->
-  Continuar
-
-                
-            </button>
+              onClick={() => validarTrabajadorYContinuar(numeroEmpleado)}
+            >
+              Continuar
+            </button>        
           </div>
         </div>
       </div>

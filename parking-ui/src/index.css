@@ -371,3 +371,33 @@ input::placeholder {
 .vehicle-question span {
   font-weight: 700;
 }
+.qr-fake-box {
+  width: 240px;
+  height: 140px;
+  border: 2px dashed #555;
+  background: transparent;
+  color: #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  border-radius: 14px;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.qr-fake-box:hover {
+  border-color: #86efac;
+  color: #86efac;
+}
+
+.qr-reader-box {
+  max-width: 340px;
+  margin: 0 auto;
+}
+
+#qr-reader {
+  background: white;
+  border-radius: 14px;
+  overflow: hidden;
+}
