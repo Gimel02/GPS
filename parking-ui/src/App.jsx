@@ -1,18 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { flushSync } from "react-dom";
 import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { Html5QrcodeScanner } from "html5-qrcode";
 
 function Login({ onLogin }) {
   const navigate = useNavigate();
-
-  /** React 18 agrupa setState: sin esto, navigate("/parking") corre antes de que exista session y vuelve a /login. */
-  function commitSessionAndGoParking(sessionData) {
-    flushSync(() => {
-      onLogin(sessionData);
-    });
-    navigate("/parking");
-  }
-
+  const [puertasLlenas, setPuertasLlenas] = useState({});
   const [tipo, setTipo] = useState("");
   const [puerta, setPuerta] = useState("");
   const [pantalla, setPantalla] = useState("seleccion");
@@ -22,40 +15,227 @@ function Login({ onLogin }) {
   const [apellido, setApellido] = useState("");
   const [entraVehiculo, setEntraVehiculo] = useState(null);
 
+  const [scannerActivo, setScannerActivo] = useState(false);
   const [numeroEmpleado, setNumeroEmpleado] = useState("");
   const [buscaEstacionamiento, setBuscaEstacionamiento] = useState(null);
-  const [adminTrabajador, setAdminTrabajador] = useState(null);
-  const [puertasAdmin, setPuertasAdmin] = useState([]);
-  const [puertasSeleccionadas, setPuertasSeleccionadas] = useState([]);
-  const [adminEstado, setAdminEstado] = useState("idle");
-  const [adminMensaje, setAdminMensaje] = useState("");
 
+  const [menuAbierto, setMenuAbierto] = useState(false);
   const [placas, setPlacas] = useState("");
   const [marca, setMarca] = useState("");
   const [color, setColor] = useState("");
+
+  const [numeroControl, setNumeroControl] = useState("");
+const [buscaEstacionamientoEstudiante, setBuscaEstacionamientoEstudiante] = useState(null);
+const [scannerEstudianteActivo, setScannerEstudianteActivo] = useState(false);
+
+  async function validarTrabajadorYContinuar(numeroLeido) {
+  const numeroLimpio = numeroLeido.trim();
+
+  if (!numeroLimpio) {
+    alert("No se detectó número de empleado");
+    return;
+  }
+
+  if (buscaEstacionamiento === null) {
+    alert("Primero selecciona si busca estacionamiento");
+    return;
+  }
+
+  try {
+    const resTrabajador = await fetch("http://localhost:3000/trabajador", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        numero_empleado: numeroLimpio
+      })
+    });
+
+    const dataTrabajador = await resTrabajador.json();
+
+    if (!dataTrabajador.success) {
+      alert("Empleado no reconocido. Verifica el QR o escribe el número nuevamente.");
+      setNumeroEmpleado("");
+      setScannerActivo(false);
+      return;
+    }
+
+    const trabajador = dataTrabajador.trabajador;
+
+    if (buscaEstacionamiento === true) {
+      onLogin({
+        user: trabajador.numero_empleado,
+        nombre: trabajador.nombre,
+        apellido_paterno: trabajador.apellido_paterno,
+        apellido_materno: trabajador.apellido_materno,
+        tipo: "trabajador",
+        puerta,
+        marca_auto: trabajador.marca_auto,
+        color: trabajador.color,
+        placas: trabajador.placas,
+        carrera: trabajador.departamento
+      });
+
+      setScannerActivo(false);
+      navigate("/parking");
+      return;
+    }
+
+    const res = await fetch("http://localhost:3000/entradas-dia", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        tipo: "trabajador",
+        clave: trabajador.numero_empleado,
+        puerta,
+        proposito: "Entrada sin estacionamiento",
+        nombre: trabajador.nombre,
+        apellido: trabajador.apellido_paterno,
+        entra_vehiculo: false,
+        placas: null,
+        marca: null,
+        color: null
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert("Acceso permitido. Trabajador registrado en bitácora.");
+
+      setNumeroEmpleado("");
+      setBuscaEstacionamiento(null);
+      setTipo("");
+      setPuerta("");
+      setPantalla("seleccion");
+    } else {
+      alert("Error al guardar en bitácora");
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Error conectando con el servidor");
+  }
+}
+
+  useEffect(() => {
+  if (!scannerActivo || pantalla !== "trabajador") return;
+
+  const scanner = new Html5QrcodeScanner(
+    "qr-reader",
+    {
+      fps: 10,
+      qrbox: {
+        width: 250,
+        height: 250
+      }
+    },
+    false
+  );
+
+  scanner.render(
+  async (decodedText) => {
+    setNumeroEmpleado(decodedText);
+
+    try {
+      await scanner.clear();
+    } catch (error) {
+      console.error("Error al cerrar scanner:", error);
+    }
+
+    setScannerActivo(false);
+    await validarTrabajadorYContinuar(decodedText);
+  },
+    (error) => {
+      // No pasa nada, esto se dispara muchas veces mientras busca QR
+    }
+  );
+
+  return () => {
+    scanner.clear().catch(() => {});
+  };
+}, [scannerActivo, pantalla]);
+
+useEffect(() => {
+  if (!scannerEstudianteActivo || pantalla !== "estudiante") return;
+
+  const scanner = new Html5QrcodeScanner(
+    "qr-reader-estudiante",
+    {
+      fps: 10,
+      qrbox: {
+        width: 250,
+        height: 250
+      }
+    },
+    false
+  );
+
+  scanner.render(
+    async (decodedText) => {
+      setNumeroControl(decodedText);
+
+      try {
+        await scanner.clear();
+      } catch (error) {
+        console.error("Error al cerrar scanner:", error);
+      }
+
+      setScannerEstudianteActivo(false);
+      await validarEstudianteYContinuar(decodedText);
+    },
+    () => {}
+  );
+
+  return () => {
+    scanner.clear().catch(() => {});
+  };
+}, [scannerEstudianteActivo, pantalla, buscaEstacionamientoEstudiante]);
+
+useEffect(() => {
+  if (pantalla === "seleccion") {
+    cargarEstadoPuertas();
+  }
+}, [pantalla]);
+
+useEffect(() => {
+  if (puerta && puertasLlenas[puerta]) {
+    setPuerta("");
+  }
+}, [puertasLlenas, puerta]);
 
   function seleccionarInvitado() {
     setTipo("invitado");
   }
 
+  async function cargarEstadoPuertas() {
+  const puertas = ["puerta1", "puerta2", "puerta3", "puerta4"];
+  const estado = {};
+
+  try {
+    for (const p of puertas) {
+      const res = await fetch(`http://localhost:3000/cajones/${p}`);
+      const data = await res.json();
+
+      const llena =
+        data.length > 0 &&
+        data.every((c) => c.ocupado === 1 || c.ocupado === true);
+
+      estado[p] = llena;
+    }
+
+    setPuertasLlenas(estado);
+  } catch (error) {
+    console.error("Error cargando estado de puertas:", error);
+  }
+}
+
   function continuarSeleccion() {
-    if (!tipo) {
-      alert("Selecciona Estudiante, Trabajador o Invitado");
-      return;
-    }
-
-    if (!puerta) {
-      alert("Selecciona la puerta donde te encuentras");
-      return;
-    }
-
-    if (tipo === "invitado") {
-      setPantalla("invitado");
-    } else if (tipo === "trabajador") {
-      setPantalla("trabajador");
-    } else {
-      alert("Falta programar estudiante");
-    }
+  if (!tipo) {
+    alert("Selecciona Estudiante, Trabajador o Invitado");
+    return;
   }
 
   async function validarPuertaDisponible() {
@@ -80,50 +260,14 @@ function Login({ onLogin }) {
     }
   }
 
-  async function aplicarBloqueoMaestro() {
-    if (!adminTrabajador) {
-      alert("Falta el trabajador administrador en sesión.");
-      return;
-    }
-    if (puertasSeleccionadas.length === 0) {
-      alert("Selecciona al menos una puerta para bloquear.");
-      return;
-    }
-
-    try {
-      const res = await fetch("http://localhost:3000/admin/bloqueo-maestro", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          numero_trabajador: adminTrabajador.numero_empleado,
-          puerta_ids: puertasSeleccionadas
-        })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        alert(
-          data.error ||
-            "No se pudo aplicar el bloqueo maestro. Revisa que el trabajador sea Administrador y que existan las puertas."
-        );
-        return;
-      }
-      if (!data.filas_actualizadas || data.filas_actualizadas < 1) {
-        alert("No se bloqueó ninguna puerta. Verifica los IDs de puertas y recarga la lista.");
-        await cargarPuertasAdmin();
-        return;
-      }
-
-      alert(`Puertas bloqueadas correctamente (${data.filas_actualizadas}).`);
-      await cargarPuertasAdmin();
-    } catch (error) {
-      console.error(error);
-      alert("Error conectando con el servidor para bloquear puertas.");
-    }
+  if (tipo === "invitado") {
+    setPantalla("invitado");
+  } else if (tipo === "trabajador") {
+    setPantalla("trabajador");
+  } else if (tipo === "estudiante") {
+    setPantalla("estudiante");
   }
+}
 
   async function handleInvitadoSubmit(e) {
     e.preventDefault();
@@ -146,8 +290,8 @@ function Login({ onLogin }) {
       const accesoPermitido = await validarPuertaDisponible();
       if (!accesoPermitido) return;
 
-      commitSessionAndGoParking({
-        user: `INV-${Date.now()}`,
+      onLogin({
+        user: null,
         nombre,
         apellido_paterno: apellido,
         tipo: "invitado",
@@ -170,7 +314,7 @@ function Login({ onLogin }) {
     },
     body: JSON.stringify({
   tipo: "invitado",
-  clave: `INV-${Date.now()}`,
+  clave: null,
   puerta,
   proposito,
   nombre,
@@ -207,71 +351,200 @@ setPuerta("");
     
   }
 
-  async function cargarPuertasAdmin() {
-    try {
-      const res = await fetch("http://localhost:3000/puertas");
-      const data = await res.json();
-      setPuertasAdmin(data);
-    } catch (error) {
-      console.error(error);
-      alert("No se pudieron cargar las puertas para el panel de bloqueo.");
-    }
+async function validarEstudianteYContinuar(numeroLeido) {
+  const numeroLimpio = numeroLeido.trim();
+
+  if (!numeroLimpio) {
+    alert("Ingresa número de control");
+    return;
   }
 
-  async function irAPanelAdmin() {
-    if (!numeroEmpleado.trim()) {
-      alert("Ingresa número de empleado");
+  if (buscaEstacionamientoEstudiante === null) {
+    alert("Selecciona si busca estacionamiento");
+    return;
+  }
+
+  try {
+    const resEstudiante = await fetch("http://localhost:3000/estudiante", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        numero_control: numeroLimpio
+      })
+    });
+
+    const dataEstudiante = await resEstudiante.json();
+
+    if (!dataEstudiante.success) {
+      alert("Estudiante no reconocido");
+      setNumeroControl("");
       return;
     }
 
-    setPantalla("admin");
-    setAdminEstado("loading");
-    setAdminMensaje("Validando permisos de administrador...");
-    setAdminTrabajador(null);
-    setPuertasAdmin([]);
-    setPuertasSeleccionadas([]);
+    const estudiante = dataEstudiante.estudiante;
 
-    try {
-      const resTrabajador = await fetch("http://localhost:3000/trabajador", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          numero_empleado: numeroEmpleado
-        })
+    if (buscaEstacionamientoEstudiante === true) {
+      onLogin({
+        user: estudiante.numero_control,
+        nombre: estudiante.nombre,
+        apellido_paterno: estudiante.apellido_paterno,
+        apellido_materno: estudiante.apellido_materno,
+        tipo: "estudiante",
+        puerta,
+        marca_auto: estudiante.marca_auto,
+        color: estudiante.color,
+        placas: estudiante.placas,
+        carrera: estudiante.carrera
       });
 
-      const dataTrabajador = await resTrabajador.json();
-
-      if (!dataTrabajador.success) {
-        setAdminEstado("error");
-        setAdminMensaje("Número de empleado no registrado o error de base de datos.");
-        return;
-      }
-
-      const trabajador = dataTrabajador.trabajador;
-
-      const rol = (trabajador.rol || "").toString().trim().toLowerCase();
-      if (rol !== "administrador") {
-        setAdminEstado("error");
-        setAdminMensaje(
-          `Solo un trabajador con rol Administrador puede usar el bloqueo maestro. Rol actual: ${trabajador.rol || "(vacío)"}`
-        );
-        return;
-      }
-
-      setAdminTrabajador(trabajador);
-      await cargarPuertasAdmin();
-      setAdminEstado("ok");
-      setAdminMensaje("");
-    } catch (error) {
-      console.error(error);
-      setAdminEstado("error");
-      setAdminMensaje("Error conectando con el servidor para el panel admin.");
+      navigate("/parking");
+      return;
     }
-  }
 
+    const res = await fetch("http://localhost:3000/entradas-dia", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        tipo: "estudiante",
+        clave: estudiante.numero_control,
+        puerta,
+        proposito: "Entrada sin estacionamiento",
+        nombre: estudiante.nombre,
+        apellido: estudiante.apellido_paterno,
+        entra_vehiculo: false,
+        placas: null,
+        marca: null,
+        color: null
+      })
+    });
+
+    const data = await res.json();
+
+    if (data.success) {
+      alert("Acceso permitido. Estudiante registrado en bitácora.");
+
+      setNumeroControl("");
+      setBuscaEstacionamientoEstudiante(null);
+      setTipo("");
+      setPuerta("");
+      setPantalla("seleccion");
+    } else {
+      alert("Error al guardar");
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Error conectando con el servidor");
+  }
+}
+
+//pantalla de estudiante
+if (pantalla === "estudiante") {
+  return (
+    <div className="page center-page">
+      <div className="card login-card">
+        <div className="logo-circle">🎓</div>
+
+        <h1 className="guest-title">ESTUDIANTE</h1>
+
+        <p className="selected-door">
+          {puerta.replace("puerta", "Puerta ")} seleccionada
+        </p>
+
+        <div className="form">
+          <div className="vehicle-question">
+            <span>¿Busca estacionamiento?</span>
+
+            <div className="availability-actions">
+              <button
+                type="button"
+                className={
+                  buscaEstacionamientoEstudiante === true
+                    ? "status-pill yes active"
+                    : "status-pill yes"
+                }
+                onClick={() => setBuscaEstacionamientoEstudiante(true)}
+              >
+                Sí
+              </button>
+
+              <button
+                type="button"
+                className={
+                  buscaEstacionamientoEstudiante === false
+                    ? "status-pill no active"
+                    : "status-pill no"
+                }
+                onClick={() => setBuscaEstacionamientoEstudiante(false)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+
+          <div style={{ textAlign: "center", margin: "20px 0" }}>
+            {!scannerEstudianteActivo && (
+              <button
+                type="button"
+                className="qr-fake-box"
+                onClick={() => setScannerEstudianteActivo(true)}
+              >
+                📷 Escanear QR
+              </button>
+            )}
+
+            {scannerEstudianteActivo && (
+              <div className="qr-reader-box">
+                <div id="qr-reader-estudiante"></div>
+
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => setScannerEstudianteActivo(false)}
+                  style={{ marginTop: "12px" }}
+                >
+                  Cancelar escaneo
+                </button>
+              </div>
+            )}
+          </div>
+
+          <label>
+            Número de control
+            <input
+              type="text"
+              value={numeroControl}
+              onChange={(e) => setNumeroControl(e.target.value)}
+              placeholder="Ej. 22130843"
+            />
+          </label>
+
+          <div className="student-actions">
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => setPantalla("seleccion")}
+            >
+              Volver
+            </button>
+
+            <button
+              className="btn"
+              onClick={() => validarEstudianteYContinuar(numeroControl)}
+            >
+              Continuar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+//pantalla del trabajador
   if (pantalla === "trabajador") {
   return (
     <div className="page center-page">
@@ -318,19 +591,31 @@ setPuerta("");
 
           {/* FAKE QR */}
           <div style={{ textAlign: "center", margin: "20px 0" }}>
-            <div style={{
-              width: "200px",
-              height: "120px",
-              border: "2px dashed #555",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto",
-              borderRadius: "10px"
-            }}>
-              📷 Escanear QR
-            </div>
-          </div>
+  {!scannerActivo && (
+    <button
+      type="button"
+      className="qr-fake-box"
+      onClick={() => setScannerActivo(true)}
+    >
+      📷 Escanear QR
+    </button>
+  )}
+
+  {scannerActivo && (
+    <div className="qr-reader-box">
+      <div id="qr-reader"></div>
+
+      <button
+        type="button"
+        className="btn btn-ghost"
+        onClick={() => setScannerActivo(false)}
+        style={{ marginTop: "12px" }}
+      >
+        Cancelar escaneo
+      </button>
+    </div>
+  )}
+</div>
 
           {/* INPUT REAL */}
           <label>
@@ -351,120 +636,12 @@ setPuerta("");
             >
               Volver
             </button>
-
             <button
               className="btn"
-              onClick={async () => {
-                if (!numeroEmpleado.trim()) {
-                  alert("Ingresa número de empleado");
-                  return;
-                }
-
-                if (buscaEstacionamiento === null) {
-                  alert("Selecciona si busca estacionamiento");
-                  return;
-                }
-
-               
-    const resTrabajador = await fetch("http://localhost:3000/trabajador", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        numero_empleado: numeroEmpleado
-      })
-    });
-
-    let dataTrabajador;
-    try {
-      dataTrabajador = await resTrabajador.json();
-    } catch {
-      alert("El servidor no respondió correctamente. ¿Está el backend en http://localhost:3000?");
-      return;
-    }
-
-    if (!dataTrabajador.success) {
-      const hint = dataTrabajador.hint ? `\n\n${dataTrabajador.hint}` : "";
-      if (resTrabajador.status >= 500 || dataTrabajador.error === "error_db") {
-        alert(
-          "Error en el servidor o en la base de datos (revisa MySQL, .env y que exista la tabla trabajadores)." +
-            hint
-        );
-      } else {
-        alert("Número de empleado no registrado." + hint);
-      }
-      return;
-    }
-
-    const trabajador = dataTrabajador.trabajador;
-
-    
-    if (buscaEstacionamiento === true) {
-      const accesoPermitido = await validarPuertaDisponible();
-      if (!accesoPermitido) return;
-      commitSessionAndGoParking({
-        user: trabajador.numero_empleado,
-        nombre: trabajador.nombre,
-        apellido_paterno: trabajador.apellido_paterno,
-        apellido_materno: trabajador.apellido_materno,
-        tipo: "trabajador",
-        puerta,
-        marca_auto: trabajador.marca_auto,
-        color: trabajador.color,
-        placas: trabajador.placas,
-        carrera: trabajador.departamento
-      });
-      return;
-    }
-
-    try {
-      const res = await fetch("http://localhost:3000/entradas-dia", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-  tipo: "trabajador",
-  clave: trabajador.numero_empleado,
-  puerta,
-  proposito: "Entrada sin estacionamiento",
-  nombre: trabajador.nombre,
-  apellido: trabajador.apellido_paterno,
-  entra_vehiculo: false
-})
-      });
-
-      const data = await res.json();
-
-      if (data.success) {
-        alert("Acceso permitido. Registrado en bitácora.");
-
-        // reset
-        setNumeroEmpleado("");
-        setBuscaEstacionamiento(null);
-        setTipo("");
-        setPuerta("");
-        setPantalla("seleccion");
-      } else {
-        alert("Error al guardar");
-      }
-    } catch (error) {
-      console.error(error);
-      alert("Error conectando con el servidor");
-    }
-  }}
->
-  Continuar
-            </button>
-
-            <button
-              type="button"
-              className="btn btn-ghost"
-              onClick={irAPanelAdmin}
+              onClick={() => validarTrabajadorYContinuar(numeroEmpleado)}
             >
-              Panel bloqueo maestro (Admin)
-            </button>
+              Continuar
+            </button>        
           </div>
         </div>
       </div>
@@ -472,84 +649,7 @@ setPuerta("");
   );
 }
 
-if (pantalla === "admin") {
-  return (
-    <div className="page login-page">
-      <div className="card">
-        <h1 className="guest-title">Bloqueo maestro</h1>
-        {adminEstado === "loading" && (
-          <p className="muted center-text">{adminMensaje}</p>
-        )}
-        {adminEstado === "error" && (
-          <p className="muted center-text" style={{ color: "#ff9a9a" }}>
-            {adminMensaje}
-          </p>
-        )}
-        <p className="selected-door">
-          Administrador: <strong>{adminTrabajador?.nombre}</strong> (
-          {adminTrabajador?.numero_empleado})
-        </p>
-
-        <p className="muted center-text">
-          Selecciona las puertas físicas que deseas clausurar. Al estar
-          bloqueadas, ningún perfil (estudiante, trabajador, invitado) podrá
-          validar acceso por esa puerta.
-        </p>
-
-        <div className="door-buttons" style={{ flexDirection: "column", gap: "0.5rem" }}>
-          {puertasAdmin.map((p) => (
-            <label
-              key={p.id}
-              className="muted"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: "0.5rem 0"
-              }}
-            >
-              <span>
-                <strong>{p.nombre || p.codigo}</strong>{" "}
-                {p.locked ? "(Bloqueada)" : "(Desbloqueada)"}
-              </span>
-              <input
-                type="checkbox"
-                checked={puertasSeleccionadas.includes(p.id)}
-                onChange={(e) => {
-                  setPuertasSeleccionadas((current) => {
-                    if (e.target.checked) {
-                      return [...current, p.id];
-                    }
-                    return current.filter((id) => id !== p.id);
-                  });
-                }}
-              />
-            </label>
-          ))}
-        </div>
-
-        <div className="student-actions" style={{ marginTop: "1rem" }}>
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => {
-              setPantalla("trabajador");
-              setPuertasSeleccionadas([]);
-              setAdminEstado("idle");
-              setAdminMensaje("");
-            }}
-          >
-            Volver
-          </button>
-          <button type="button" className="btn" onClick={aplicarBloqueoMaestro}>
-            Bloquear puertas seleccionadas
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
+//pantalla del invitado
   if (pantalla === "invitado") {
     return (
       <div className="page center-page">
@@ -675,9 +775,56 @@ if (pantalla === "admin") {
     );
   }
 
+  //seleccionarestudiante, trabajador o invitado y seleccionar la puerta
   return (
     <div className="page center-page">
       <div className="card login-card">
+         <button
+  type="button"
+  className="hamburger-btn"
+  onClick={() => setMenuAbierto(true)}
+>
+  ☰
+</button>
+
+{menuAbierto && (
+  <div className="side-menu-overlay" onClick={() => setMenuAbierto(false)}>
+    <aside className="side-menu" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        className="close-menu-btn"
+        onClick={() => setMenuAbierto(false)}
+      >
+        ✕
+      </button>
+
+      <h2>Menú</h2>
+
+      <button
+        type="button"
+        className="btn menu-action-btn"
+        onClick={() => navigate("/bitacora")}
+      >
+        Consultar bitácora del día
+      </button>
+       <button
+        type="button"
+        className="btn menu-action-btn"
+        onClick={() => navigate("/registros-activos")}
+      >
+        Ver registros activos
+      </button>
+            <button
+        type="button"
+        className="btn menu-action-btn"
+        onClick={() => navigate("/salida")}
+      >
+        Registrar salida
+      </button>
+           
+    </aside>
+  </div>
+)}
         <div className="logo-circle">?</div>
 
         <h1>Favor de seleccionar</h1>
@@ -722,16 +869,34 @@ if (pantalla === "admin") {
         </p>
 
         <div className="door-buttons">
-          {["puerta1", "puerta2", "puerta3", "puerta4"].map((p, index) => (
-            <button
-              key={p}
-              className={puerta === p ? "btn active-btn" : "btn btn-ghost"}
-              onClick={() => setPuerta(p)}
-            >
-              Puerta {index + 1}
-            </button>
-          ))}
-        </div>
+  {["puerta1", "puerta2", "puerta3", "puerta4"].map((p, index) => {
+    const estaLlena = puertasLlenas[p];
+
+    return (
+      <button
+        key={p}
+        type="button"
+        className={
+          estaLlena
+            ? "btn door-full"
+            : puerta === p
+            ? "btn active-door"
+            : "btn btn-ghost"
+        }
+        onClick={() => {
+          if (estaLlena) {
+            alert("Puerta sin estacionamiento disponible");
+            return;
+          }
+
+          setPuerta(p);
+        }}
+      >
+        Puerta {index + 1}
+      </button>
+    );
+  })}
+</div>
 
         <button className="btn continue-selection-btn" onClick={continuarSeleccion}>
           Continuar
@@ -845,18 +1010,19 @@ await fetch("http://localhost:3000/entradas-dia", {
     "Content-Type": "application/json"
   },
   body: JSON.stringify({
-    tipo: session.tipo,
-    clave: session.user,
-    puerta: session.puerta,
-    proposito: session.proposito || "Entrada con estacionamiento",
-    nombre: session.nombre,
-    apellido: session.apellido_paterno || "",
-    entra_vehiculo: true,
-    placas: session.placas || null,
-    marca: session.marca_auto || null,
-    color: session.color || null,
-    clave: session.user
-  })
+  tipo: session.tipo,
+  clave: session.user,
+  puerta: session.puerta,
+  proposito: session.proposito || "Entrada con estacionamiento",
+  nombre: session.nombre,
+  apellido: session.apellido_paterno || "",
+  entra_vehiculo: true,
+  placas: session.placas || null,
+  marca: session.marca_auto || null,
+  color: session.color || null,
+  id_cajon: cajon.id,
+  numero_cajon: cajon.numero
+})
 });
 
 alert(
@@ -954,7 +1120,11 @@ navigate("/login");
   </p>
 
   <h2>Consultando disponibilidad</h2>
-
+{disponible === false && (
+  <p className="full-door-message">
+    Esta puerta tiene sus 40 cajones ocupados.
+  </p>
+)}
           <div className="availability-box">
             <span className="muted">¿Disponible?</span>
             <div className="availability-actions">
@@ -1013,11 +1183,319 @@ navigate("/login");
           </div>
 
           <div className="actions">
-            <button className="btn" onClick={handleReserve}>
-              Apartar
-            </button>
+            <button
+  className={disponible === false ? "btn btn-disabled-red" : "btn"}
+  onClick={handleReserve}
+  disabled={disponible === false}
+>
+  {disponible === false ? "Puerta llena" : "Apartar"}
+</button>
           </div>
         </aside>
+      </main>
+    </div>
+  );
+}
+
+//salida
+function Salida() {
+  const navigate = useNavigate();
+  const [busqueda, setBusqueda] = useState("");
+  const [entrada, setEntrada] = useState(null);
+
+  async function buscarEntrada() {
+    if (!busqueda.trim()) {
+      alert("Escribe clave, placas o nombre");
+      return;
+    }
+
+    try {
+      const res = await fetch(`http://localhost:3000/buscar-salida/${busqueda.trim()}`);
+      const data = await res.json();
+
+      if (!data.success) {
+        alert("No se encontró una entrada activa");
+        setEntrada(null);
+        return;
+      }
+
+      setEntrada(data.entrada);
+    } catch (error) {
+      console.error(error);
+      alert("Error conectando con el servidor");
+    }
+  }
+
+  async function registrarSalida() {
+    if (!entrada) return;
+
+    const confirmar = window.confirm(
+      "¿Confirmas registrar la salida y liberar el cajón si aplica?"
+    );
+
+    if (!confirmar) return;
+
+    try {
+      const res = await fetch("http://localhost:3000/registrar-salida", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id_entrada: entrada.id,
+          id_cajon: entrada.id_cajon
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        alert("Salida registrada correctamente.");
+
+        setBusqueda("");
+        setEntrada(null);
+        navigate("/login");
+      } else {
+        alert("No se pudo registrar la salida");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Error conectando con el servidor");
+    }
+  }
+
+  return (
+    <div className="page center-page">
+      <div className="card salida-card">
+        <h1 className="guest-title">REGISTRAR SALIDA</h1>
+
+        <p className="muted">
+          Busca por folio, número de control, número de empleado o placas.
+        </p>
+
+        <label>
+          Clave o placas
+          <input
+            type="text"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Ej. INV-000001, 10953 o EG156F"
+          />
+        </label>
+
+        <div className="student-actions">
+          <button className="btn btn-ghost" onClick={() => navigate("/login")}>
+            Volver
+          </button>
+
+          <button className="btn" onClick={buscarEntrada}>
+            Buscar
+          </button>
+        </div>
+
+        {entrada && (
+          <div className="salida-result">
+            <h2>Entrada activa encontrada</h2>
+
+            <p><strong>Tipo:</strong> {entrada.tipo}</p>
+            <p><strong>Clave:</strong> {entrada.clave}</p>
+            <p><strong>Nombre:</strong> {entrada.nombre} {entrada.apellido}</p>
+            <p><strong>Puerta:</strong> {entrada.puerta}</p>
+            <p><strong>Propósito:</strong> {entrada.proposito}</p>
+            <p><strong>Vehículo:</strong> {entrada.entra_vehiculo ? "Sí" : "No"}</p>
+            <p><strong>Placas:</strong> {entrada.placas || "-"}</p>
+            <p><strong>Marca:</strong> {entrada.marca || "-"}</p>
+            <p><strong>Color:</strong> {entrada.color || "-"}</p>
+            <p><strong>Cajón:</strong> {entrada.numero_cajon || "Sin cajón"}</p>
+            <p><strong>Entrada:</strong> {entrada.fecha_hora}</p>
+
+            <button className="btn release-btn" onClick={registrarSalida}>
+              Registrar salida y liberar cajón
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+//bitacora
+function Bitacora() {
+  const navigate = useNavigate();
+  const [entradas, setEntradas] = useState([]);
+
+  useEffect(() => {
+    async function cargarBitacora() {
+      try {
+        const res = await fetch("http://localhost:3000/entradas-dia");
+        const data = await res.json();
+        setEntradas(data);
+      } catch (error) {
+        console.error(error);
+        alert("Error cargando la bitácora");
+      }
+    }
+
+    cargarBitacora();
+  }, []);
+
+  return (
+    <div className="page bitacora-page">
+      <header className="topbar">
+        <div>
+          <h2 className="topbar-title">Bitácora del día</h2>
+          <p className="muted">Registros guardados en entradas_del_dia</p>
+        </div>
+
+        <button className="btn btn-ghost" onClick={() => navigate("/login")}>
+          Volver
+        </button>
+      </header>
+
+      <main className="bitacora-container">
+        <section className="card bitacora-card">
+          <h2>Entradas registradas</h2>
+
+          <div className="table-wrapper">
+            <table className="bitacora-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Tipo</th>
+                  <th>Clave</th>
+                  <th>Puerta</th>
+                  <th>Propósito</th>
+                  <th>Nombre</th>
+                  <th>Apellido</th>
+                  <th>Vehículo</th>
+                  <th>Placas</th>
+                  <th>Marca</th>
+                  <th>Color</th>
+                  <th>Fecha/Hora</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {entradas.length === 0 ? (
+                  <tr>
+                    <td colSpan="12" className="empty-table">
+                      No hay registros todavía
+                    </td>
+                  </tr>
+                ) : (
+                  entradas.map((entrada) => (
+                    <tr key={entrada.id}>
+                      <td>{entrada.id}</td>
+                      <td>{entrada.tipo}</td>
+                      <td>{entrada.clave || "-"}</td>
+                      <td>{entrada.puerta}</td>
+                      <td>{entrada.proposito}</td>
+                      <td>{entrada.nombre}</td>
+                      <td>{entrada.apellido}</td>
+                      <td>{entrada.entra_vehiculo ? "Sí" : "No"}</td>
+                      <td>{entrada.placas || "-"}</td>
+                      <td>{entrada.marca || "-"}</td>
+                      <td>{entrada.color || "-"}</td>
+                      <td>{entrada.fecha_hora}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+//registros
+function RegistrosActivos() {
+  const navigate = useNavigate();
+  const [registros, setRegistros] = useState([]);
+
+  useEffect(() => {
+    async function cargarRegistrosActivos() {
+      try {
+        const res = await fetch("http://localhost:3000/registros-activos");
+        const data = await res.json();
+        setRegistros(data);
+      } catch (error) {
+        console.error(error);
+        alert("Error cargando registros activos");
+      }
+    }
+
+    cargarRegistrosActivos();
+  }, []);
+
+  return (
+    <div className="page bitacora-page">
+      <header className="topbar">
+        <div>
+          <h2 className="topbar-title">Registros activos</h2>
+          <p className="muted">Personas que siguen dentro del sistema</p>
+        </div>
+
+        <button className="btn btn-ghost" onClick={() => navigate("/login")}>
+          Volver
+        </button>
+      </header>
+
+      <main className="bitacora-container">
+        <section className="card bitacora-card">
+          <h2>Personas dentro</h2>
+
+          <div className="table-wrapper">
+            <table className="bitacora-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Tipo</th>
+                  <th>Clave</th>
+                  <th>Puerta</th>
+                  <th>Nombre</th>
+                  <th>Apellido</th>
+                  <th>Vehículo</th>
+                  <th>Placas</th>
+                  <th>Cajón</th>
+                  <th>Entrada</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {registros.length === 0 ? (
+                  <tr>
+                    <td colSpan="11" className="empty-table">
+                      No hay personas dentro actualmente
+                    </td>
+                  </tr>
+                ) : (
+                  registros.map((registro) => (
+                    <tr key={registro.id}>
+                      <td>{registro.id}</td>
+                      <td>{registro.tipo}</td>
+                      <td>{registro.clave || "-"}</td>
+                      <td>{registro.puerta}</td>
+                      <td>{registro.nombre}</td>
+                      <td>{registro.apellido}</td>
+                      <td>{registro.entra_vehiculo ? "Sí" : "No"}</td>
+                      <td>{registro.placas || "-"}</td>
+                      <td>{registro.numero_cajon || "Sin cajón"}</td>
+                      <td>{registro.fecha_hora}</td>
+                      <td>
+                        <span className="estado-activo">
+                          {registro.estado}
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
       </main>
     </div>
   );
@@ -1033,6 +1511,9 @@ export default function App() {
         element={<Navigate to={session ? "/parking" : "/login"} replace />}
       />
       <Route path="/login" element={<Login onLogin={setSession} />} />
+      <Route path="/bitacora" element={<Bitacora />} />
+      <Route path="/salida" element={<Salida />} />
+      <Route path="/registros-activos" element={<RegistrosActivos />} />
       <Route
         path="/parking"
         element={
