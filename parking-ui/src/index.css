@@ -567,6 +567,228 @@ input::placeholder {
   color: white !important;
 }
 
+.door-blocked,
+.door-blocked:disabled,
+.btn.door-blocked,
+.btn.door-blocked:disabled {
+  background: #4b5563 !important;
+  color: #e5e7eb !important;
+  cursor: not-allowed !important;
+  opacity: 0.92 !important;
+  border: 2px solid #374151 !important;
+  box-shadow: none !important;
+}
+
+.door-blocked:hover,
+.btn.door-blocked:hover {
+  background: #4b5563 !important;
+  color: #e5e7eb !important;
+}
+
+.door-buttons .btn.door-blocked-solo {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  min-height: 90px;
+  padding: 10px 6px !important;
+  white-space: normal !important;
+}
+
+.door-blocked-only-label {
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  line-height: 1.25;
+  text-align: center;
+}
+
+.door-block-nav-btn {
+  width: 100%;
+  margin-top: 14px;
+  border-style: dashed;
+  border-color: #6b7280;
+  color: #d1d5db;
+}
+
+.bloqueo-puertas-card {
+  max-width: 440px;
+  width: min(440px, 100%);
+}
+
+.bloqueo-title {
+  text-align: center;
+  font-size: 1.35rem;
+  margin-bottom: 8px;
+  color: #fbbf24;
+}
+
+.bloqueo-desc,
+.bloqueo-hint {
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.bloqueo-desc {
+  margin-bottom: 10px;
+}
+
+.bloqueo-hint {
+  margin-bottom: 6px;
+}
+
+/* Bloquear puertas: lista en tarjetas */
+.puerta-estado-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  margin-top: 20px;
+}
+
+.puerta-estado-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  width: 100%;
+  margin: 0;
+  padding: 16px 18px;
+  text-align: left;
+  font: inherit;
+  color: #e8eefc;
+  cursor: pointer;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 23, 42, 0.45);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
+}
+
+.puerta-estado-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.22);
+}
+
+.puerta-estado-card:focus-visible {
+  outline: 2px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.puerta-estado-card:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.puerta-estado-card--open {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: linear-gradient(
+    135deg,
+    rgba(6, 78, 59, 0.35) 0%,
+    rgba(15, 23, 42, 0.5) 100%
+  );
+}
+
+.puerta-estado-card--open:hover:not(:disabled) {
+  border-color: rgba(52, 211, 153, 0.65);
+}
+
+.puerta-estado-card--closed {
+  border-color: rgba(148, 163, 184, 0.4);
+  background: linear-gradient(
+    135deg,
+    rgba(55, 65, 81, 0.45) 0%,
+    rgba(15, 23, 42, 0.55) 100%
+  );
+}
+
+.puerta-estado-card--closed:hover:not(:disabled) {
+  border-color: rgba(148, 163, 184, 0.55);
+}
+
+.puerta-estado-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.puerta-estado-nombre {
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #f1f5f9;
+}
+
+.puerta-estado-sub {
+  font-size: 0.82rem;
+  line-height: 1.4;
+  color: rgba(226, 232, 240, 0.72);
+}
+
+.puerta-estado-badge {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.puerta-estado-badge--open {
+  background: rgba(16, 185, 129, 0.25);
+  color: #6ee7b7;
+  border: 1px solid rgba(52, 211, 153, 0.45);
+}
+
+.puerta-estado-badge--closed {
+  background: rgba(100, 116, 139, 0.35);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.bloqueo-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.bloqueo-confirm-modal {
+  max-width: 420px;
+  width: 100%;
+  margin: 0;
+}
+
+.bloqueo-confirm-modal .guest-title {
+  font-size: 1.15rem;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.bloqueo-confirm-list {
+  margin: 8px 0 20px;
+  padding-left: 1.35rem;
+  text-align: left;
+  color: rgba(232, 238, 252, 0.95);
+  line-height: 1.6;
+}
+
+.bloqueo-actions {
+  margin-top: 24px;
+}
+
 .salida-card {
   width: min(720px, 92vw);
   position: relative;

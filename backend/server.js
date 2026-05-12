@@ -86,6 +86,37 @@ function puertaLookupFromParam(puerta) {
   return { column: "codigo", value: s };
 }
 
+/**
+ * MySQL / mysql2 puede devolver BOOLEAN como 0/1, string o Buffer (BIT).
+ * `!!buffer` es siempre true con un Buffer no vacío, y la UI marca todas bloqueadas.
+ */
+function normalizeLockedFromDb(v) {
+  if (v == null || v === "") return false;
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (Buffer.isBuffer(v)) {
+    if (v.length === 0) return false;
+    return v[0] !== 0;
+  }
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    return s === "1" || s === "true";
+  }
+  return false;
+}
+
+/** Acepta boolean o equivalentes por si el cliente envía otro tipo. */
+function parseLockedFromBody(v) {
+  if (typeof v === "boolean") return v;
+  if (typeof v === "number") return v !== 0;
+  if (typeof v === "string") {
+    const s = v.trim().toLowerCase();
+    if (s === "true" || s === "1") return true;
+    if (s === "false" || s === "0") return false;
+  }
+  return null;
+}
+
 function isPuertaBloqueada(puertaParam, cb) {
   const lookup = puertaLookupFromParam(puertaParam);
   if (!lookup) {
@@ -95,55 +126,7 @@ function isPuertaBloqueada(puertaParam, cb) {
   db.query(sql, [lookup.value], (err, rows) => {
     if (err) return cb(err);
     if (!rows.length) return cb(null, false);
-    cb(null, !!rows[0].locked);
-  });
-}
-
-/**
- * Solo tipo_usuario = 'Trabajador' y rol = 'Administrador' pueden usar bloqueo maestro.
- */
-function assertAdministradorLegacy(numero, cb) {
-  const sql = `
-    SELECT 1 AS ok
-    FROM trabajadores
-    WHERE numero_empleado = ?
-      AND LOWER(tipo_usuario) = 'trabajador'
-      AND LOWER(rol) = 'administrador'
-    LIMIT 1
-  `;
-  db.query(sql, [numero], (err, rows) => {
-    if (err) {
-      if (isBadFieldError(err)) {
-        return cb(Object.assign(new Error("forbidden"), { code: "FORBIDDEN" }));
-      }
-      return cb(err);
-    }
-    if (!rows.length) {
-      return cb(Object.assign(new Error("forbidden"), { code: "FORBIDDEN" }));
-    }
-    cb(null);
-  });
-}
-
-function assertAdministradorTrabajador(numeroTrabajador, cb) {
-  if (!numeroTrabajador) {
-    return cb(Object.assign(new Error("missing_worker"), { code: "MISSING_WORKER" }));
-  }
-  const sql = `
-    SELECT 1 AS ok
-    FROM trabajadores
-    WHERE numero_trabajador = ?
-      AND LOWER(tipo_usuario) = 'trabajador'
-      AND LOWER(rol) = 'administrador'
-    LIMIT 1
-  `;
-  db.query(sql, [numeroTrabajador], (err, rows) => {
-    if (err) {
-      if (!isBadFieldError(err)) return cb(err);
-      return assertAdministradorLegacy(numeroTrabajador, cb);
-    }
-    if (rows.length) return cb(null);
-    assertAdministradorLegacy(numeroTrabajador, cb);
+    cb(null, normalizeLockedFromDb(rows[0].locked));
   });
 }
 
@@ -196,11 +179,10 @@ app.post("/trabajador", (req, res) => {
 });
 
 /**
- * Bloqueo maestro: un administrador trabajador fija locked = true en una o varias puertas.
- * Body: { numero_trabajador, puerta_ids: number[] }
+ * Bloqueo maestro: fija locked = true en una o varias puertas.
+ * Body: { puerta_ids: number[] }
  */
 app.post("/admin/bloqueo-maestro", (req, res) => {
-  const numero = numeroTrabajadorFromBody(req.body);
   const puertaIds = req.body.puerta_ids;
 
   if (!Array.isArray(puertaIds) || puertaIds.length === 0) {
@@ -222,46 +204,92 @@ app.post("/admin/bloqueo-maestro", (req, res) => {
     ids.push(n);
   }
 
-  assertAdministradorTrabajador(numero, (authErr) => {
-    if (authErr && authErr.code === "FORBIDDEN") {
-      return res.status(403).json({
-        success: false,
-        error:
-          "Acceso denegado. Solo un usuario tipo Trabajador con rol Administrador puede clausurar accesos."
-      });
-    }
-    if (authErr && authErr.code === "MISSING_WORKER") {
-      return res.status(400).json({
-        success: false,
-        error: "Se requiere numero_trabajador (identificador único del trabajador)."
-      });
-    }
-    if (authErr) {
-      console.error(authErr);
+  const placeholders = ids.map(() => "?").join(",");
+  const sql = `UPDATE puertas SET locked = TRUE WHERE id IN (${placeholders})`;
+
+  db.query(sql, ids, (err, result) => {
+    if (err) {
+      console.error(err);
       return res.status(500).json({ success: false });
     }
+    if (!result.affectedRows || result.affectedRows < 1) {
+      return res.status(404).json({
+        success: false,
+        error: "No se encontró ninguna puerta con los IDs enviados."
+      });
+    }
 
-    const placeholders = ids.map(() => "?").join(",");
-    const sql = `UPDATE puertas SET locked = TRUE WHERE id IN (${placeholders})`;
+    res.json({
+      success: true,
+      filas_actualizadas: result.affectedRows
+    });
+  });
+});
 
-    db.query(sql, ids, (err, result) => {
+/**
+ * Bloquea o desbloquea una sola puerta por ID.
+ * Body: { puerta_id: number, locked: boolean }
+ */
+app.post("/admin/puerta-locked", (req, res) => {
+  const rawId = req.body.puerta_id;
+  const id =
+    typeof rawId === "string" && /^\d+$/.test(String(rawId).trim())
+      ? parseInt(String(rawId).trim(), 10)
+      : Number(rawId);
+  const lockedParsed = parseLockedFromBody(req.body.locked);
+
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({
+      success: false,
+      error: "puerta_id debe ser un entero positivo."
+    });
+  }
+  if (lockedParsed === null) {
+    return res.status(400).json({
+      success: false,
+      error: "locked debe ser true (bloquear) o false (desbloquear)."
+    });
+  }
+
+  const lockedSql = lockedParsed ? 1 : 0;
+
+  db.query(
+    "UPDATE puertas SET locked = ? WHERE id = ?",
+    [lockedSql, id],
+    (err, result) => {
       if (err) {
         console.error(err);
         return res.status(500).json({ success: false });
       }
-      if (!result.affectedRows || result.affectedRows < 1) {
-        return res.status(404).json({
-          success: false,
-          error: "No se encontró ninguna puerta con los IDs enviados."
-        });
+      if (result.affectedRows > 0) {
+        return res.json({ success: true });
       }
-
-      res.json({
-        success: true,
-        filas_actualizadas: result.affectedRows
-      });
-    });
-  });
+      db.query(
+        "SELECT id, locked FROM puertas WHERE id = ? LIMIT 1",
+        [id],
+        (e2, r2) => {
+          if (e2) {
+            console.error(e2);
+            return res.status(500).json({ success: false });
+          }
+          if (!r2.length) {
+            return res.status(404).json({
+              success: false,
+              error: "No se encontró la puerta indicada."
+            });
+          }
+          const current = normalizeLockedFromDb(r2[0].locked);
+          if (current === lockedParsed) {
+            return res.json({ success: true });
+          }
+          return res.status(500).json({
+            success: false,
+            error: "No se pudo actualizar el estado de la puerta."
+          });
+        }
+      );
+    }
+  );
 });
 
 /**
@@ -295,7 +323,12 @@ app.get("/puertas", (req, res) => {
       console.error(err);
       return res.status(500).json({ error: "error_servidor" });
     }
-    res.json(rows);
+    res.json(
+      rows.map((r) => ({
+        ...r,
+        locked: normalizeLockedFromDb(r.locked)
+      }))
+    );
   });
 });
 

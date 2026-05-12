@@ -6,6 +6,7 @@ import { Html5QrcodeScanner } from "html5-qrcode";
 function Login({ onLogin }) {
   const navigate = useNavigate();
   const [puertasLlenas, setPuertasLlenas] = useState({});
+  const [puertasBloqueadas, setPuertasBloqueadas] = useState({});
   const [tipo, setTipo] = useState("");
   const [puerta, setPuerta] = useState("");
   const [pantalla, setPantalla] = useState("seleccion");
@@ -27,6 +28,32 @@ function Login({ onLogin }) {
   const [numeroControl, setNumeroControl] = useState("");
 const [buscaEstacionamientoEstudiante, setBuscaEstacionamientoEstudiante] = useState(null);
 const [scannerEstudianteActivo, setScannerEstudianteActivo] = useState(false);
+
+  async function validarPuertaDisponible() {
+    if (!puerta) {
+      alert("Selecciona una puerta");
+      return false;
+    }
+    try {
+      const res = await fetch("http://localhost:3000/validar-acceso", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ puerta })
+      });
+      const data = await res.json();
+      if (!res.ok || data.permitido === false) {
+        alert("Acceso denegado: puerta bloqueada por bloqueo maestro.");
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error(error);
+      alert("No se pudo validar el estado de la puerta.");
+      return false;
+    }
+  }
 
   async function validarTrabajadorYContinuar(numeroLeido) {
   const numeroLimpio = numeroLeido.trim();
@@ -62,6 +89,9 @@ const [scannerEstudianteActivo, setScannerEstudianteActivo] = useState(false);
     }
 
     const trabajador = dataTrabajador.trabajador;
+
+    const accesoPermitido = await validarPuertaDisponible();
+    if (!accesoPermitido) return;
 
     if (buscaEstacionamiento === true) {
       onLogin({
@@ -201,21 +231,22 @@ useEffect(() => {
 }, [pantalla]);
 
 useEffect(() => {
-  if (puerta && puertasLlenas[puerta]) {
+  if (puerta && (puertasLlenas[puerta] || puertasBloqueadas[puerta])) {
     setPuerta("");
   }
-}, [puertasLlenas, puerta]);
+}, [puertasLlenas, puertasBloqueadas, puerta]);
 
   function seleccionarInvitado() {
     setTipo("invitado");
   }
 
   async function cargarEstadoPuertas() {
-  const puertas = ["puerta1", "puerta2", "puerta3", "puerta4"];
+  const lista = ["puerta1", "puerta2", "puerta3", "puerta4"];
   const estado = {};
+  const bloqueo = {};
 
   try {
-    for (const p of puertas) {
+    for (const p of lista) {
       const res = await fetch(`http://localhost:3000/cajones/${p}`);
       const data = await res.json();
 
@@ -227,38 +258,39 @@ useEffect(() => {
     }
 
     setPuertasLlenas(estado);
+
+    try {
+      const resP = await fetch("http://localhost:3000/puertas");
+      if (resP.ok) {
+        const rows = await resP.json();
+        for (const row of rows) {
+          if (row.codigo) {
+            bloqueo[row.codigo] = !!row.locked;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("Error cargando bloqueo de puertas:", e);
+    }
+    setPuertasBloqueadas(bloqueo);
   } catch (error) {
     console.error("Error cargando estado de puertas:", error);
   }
 }
 
-  function continuarSeleccion() {
+  async function continuarSeleccion() {
   if (!tipo) {
     alert("Selecciona Estudiante, Trabajador o Invitado");
     return;
   }
 
-  async function validarPuertaDisponible() {
-    try {
-      const res = await fetch("http://localhost:3000/validar-acceso", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ puerta })
-      });
-      const data = await res.json();
-      if (!res.ok || data.permitido === false) {
-        alert("Acceso denegado: puerta bloqueada por bloqueo maestro.");
-        return false;
-      }
-      return true;
-    } catch (error) {
-      console.error(error);
-      alert("No se pudo validar el estado de la puerta.");
-      return false;
-    }
+  if (!puerta) {
+    alert("Selecciona la puerta donde te encuentras");
+    return;
   }
+
+  const accesoPermitido = await validarPuertaDisponible();
+  if (!accesoPermitido) return;
 
   if (tipo === "invitado") {
     setPantalla("invitado");
@@ -307,6 +339,9 @@ useEffect(() => {
     }
 
     try {
+      const accesoPermitido = await validarPuertaDisponible();
+      if (!accesoPermitido) return;
+
   const res = await fetch("http://localhost:3000/entradas-dia", {
     method: "POST",
     headers: {
@@ -384,6 +419,9 @@ async function validarEstudianteYContinuar(numeroLeido) {
     }
 
     const estudiante = dataEstudiante.estudiante;
+
+    const accesoPermitido = await validarPuertaDisponible();
+    if (!accesoPermitido) return;
 
     if (buscaEstacionamientoEstudiante === true) {
       onLogin({
@@ -864,6 +902,14 @@ if (pantalla === "estudiante") {
           </button>
         </div>
 
+        <button
+          type="button"
+          className="btn btn-ghost door-block-nav-btn"
+          onClick={() => navigate("/bloquear-puertas")}
+        >
+          Bloquear acceso a puertas
+        </button>
+
         <p className="muted center-text">
           Selecciona la puerta donde te encuentras
         </p>
@@ -871,19 +917,31 @@ if (pantalla === "estudiante") {
         <div className="door-buttons">
   {["puerta1", "puerta2", "puerta3", "puerta4"].map((p, index) => {
     const estaLlena = puertasLlenas[p];
+    const estaBloqueada = puertasBloqueadas[p];
 
     return (
       <button
         key={p}
         type="button"
         className={
-          estaLlena
+          estaBloqueada
+            ? "btn door-blocked door-blocked-solo"
+            : estaLlena
             ? "btn door-full"
             : puerta === p
             ? "btn active-door"
             : "btn btn-ghost"
         }
+        aria-label={
+          estaBloqueada
+            ? "Entrada bloqueada"
+            : `Puerta ${index + 1}${estaLlena ? ", sin cajones disponibles" : ""}`
+        }
         onClick={() => {
+          if (estaBloqueada) {
+            alert("Puerta inhabilitada. No se permite acceso por esta entrada.");
+            return;
+          }
           if (estaLlena) {
             alert("Puerta sin estacionamiento disponible");
             return;
@@ -892,13 +950,21 @@ if (pantalla === "estudiante") {
           setPuerta(p);
         }}
       >
-        Puerta {index + 1}
+        {estaBloqueada ? (
+          <span className="door-blocked-only-label">Bloqueada</span>
+        ) : (
+          `Puerta ${index + 1}`
+        )}
       </button>
     );
   })}
 </div>
 
-        <button className="btn continue-selection-btn" onClick={continuarSeleccion}>
+        <button
+          type="button"
+          className="btn continue-selection-btn"
+          onClick={() => void continuarSeleccion()}
+        >
           Continuar
         </button>
       </div>
@@ -1501,6 +1567,173 @@ function RegistrosActivos() {
   );
 }
 
+function BloquearPuertas() {
+  const navigate = useNavigate();
+  const [puertas, setPuertas] = useState([]);
+  const [cargando, setCargando] = useState(false);
+  /** null | { row, locked: boolean, label: string } — locked = estado objetivo */
+  const [pendiente, setPendiente] = useState(null);
+
+  async function loadPuertas() {
+    try {
+      const res = await fetch("http://localhost:3000/puertas");
+      if (!res.ok) throw new Error("bad_status");
+      setPuertas(await res.json());
+    } catch {
+      alert("No se pudo cargar el estado de las puertas");
+    }
+  }
+
+  useEffect(() => {
+    loadPuertas();
+  }, []);
+
+  function abrirCambioPuerta(row, index) {
+    const label = row.nombre || `Puerta ${index + 1}`;
+    setPendiente({
+      row,
+      locked: !row.locked,
+      label
+    });
+  }
+
+  async function confirmarCambioPuerta() {
+    if (!pendiente) return;
+    setCargando(true);
+    try {
+      const res = await fetch("http://localhost:3000/admin/puerta-locked", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          puerta_id: pendiente.row.id,
+          locked: pendiente.locked
+        })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.success) {
+        alert(data.error || "No se pudo actualizar el estado de la puerta.");
+        return;
+      }
+      setPendiente(null);
+      await loadPuertas();
+    } catch (e) {
+      console.error(e);
+      alert("Error de conexión con el servidor");
+    } finally {
+      setCargando(false);
+    }
+  }
+
+  return (
+    <div className="page center-page">
+      <div className="card login-card bloqueo-puertas-card">
+        <h1 className="bloqueo-title">Bloquear o desbloquear puertas</h1>
+        <p className="muted center-text bloqueo-desc">
+          Elige una puerta: si está abierta al tráfico, podrás bloquearla; si está
+          bloqueada, podrás desbloquearla.
+        </p>
+
+        <p className="muted center-text bloqueo-hint">
+          Toca la puerta que quieras cambiar y confirma en el cuadro de diálogo.
+        </p>
+
+        <div className="puerta-estado-list" role="list">
+          {puertas.map((row, index) => {
+            const nombre = row.nombre || `Puerta ${index + 1}`;
+            const abierta = !row.locked;
+            return (
+              <button
+                key={row.id}
+                type="button"
+                role="listitem"
+                className={
+                  abierta
+                    ? "puerta-estado-card puerta-estado-card--open"
+                    : "puerta-estado-card puerta-estado-card--closed"
+                }
+                onClick={() => abrirCambioPuerta(row, index)}
+                disabled={cargando}
+              >
+                <div className="puerta-estado-text">
+                  <span className="puerta-estado-nombre">{nombre}</span>
+                  <span className="puerta-estado-sub">
+                    {abierta
+                      ? "Se permite el acceso por esta entrada"
+                      : "Acceso inhabilitado en esta entrada"}
+                  </span>
+                </div>
+                <span
+                  className={
+                    abierta
+                      ? "puerta-estado-badge puerta-estado-badge--open"
+                      : "puerta-estado-badge puerta-estado-badge--closed"
+                  }
+                  aria-hidden
+                >
+                  {abierta ? "Abierta" : "Cerrada"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="student-actions bloqueo-actions">
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => navigate("/login")}
+            disabled={cargando}
+          >
+            Volver
+          </button>
+        </div>
+      </div>
+
+      {pendiente && (
+        <div
+          className="bloqueo-confirm-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="bloqueo-confirm-title"
+          onClick={() => !cargando && setPendiente(null)}
+        >
+          <div
+            className="card login-card bloqueo-confirm-modal"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="bloqueo-confirm-title" className="guest-title">
+              {pendiente.locked
+                ? "Se bloqueará la siguiente puerta"
+                : "Se desbloqueará la siguiente puerta"}
+            </h2>
+            <ul className="bloqueo-confirm-list">
+              <li>{pendiente.label}</li>
+            </ul>
+            <div className="student-actions bloqueo-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                disabled={cargando}
+                onClick={() => setPendiente(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={cargando}
+                onClick={() => void confirmarCambioPuerta()}
+              >
+                {cargando ? "Aplicando…" : "Confirmar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
 
@@ -1511,6 +1744,7 @@ export default function App() {
         element={<Navigate to={session ? "/parking" : "/login"} replace />}
       />
       <Route path="/login" element={<Login onLogin={setSession} />} />
+      <Route path="/bloquear-puertas" element={<BloquearPuertas />} />
       <Route path="/bitacora" element={<Bitacora />} />
       <Route path="/salida" element={<Salida />} />
       <Route path="/registros-activos" element={<RegistrosActivos />} />

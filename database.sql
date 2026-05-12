@@ -3,6 +3,7 @@ USE parking;
 
 DROP TABLE IF EXISTS entradas_del_dia;
 DROP TABLE IF EXISTS cajones;
+DROP TABLE IF EXISTS puertas;
 DROP TABLE IF EXISTS trabajadores;
 DROP TABLE IF EXISTS estudiantes;
 
@@ -36,10 +37,27 @@ VALUES
 ('22130843','Gimel','Muñoz','Flores','1234','Volkswagen','Plata','EG156F','Sistemas');
 
 -- =========================
+-- TABLA PUERTAS (bloqueo maestro / lectura de estado)
+-- =========================
+CREATE TABLE puertas (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  codigo VARCHAR(20) NOT NULL UNIQUE,
+  nombre VARCHAR(100),
+  locked BOOLEAN NOT NULL DEFAULT 0
+);
+
+INSERT INTO puertas (codigo, nombre, locked) VALUES
+('puerta1', 'Puerta 1', 0),
+('puerta2', 'Puerta 2', 0),
+('puerta3', 'Puerta 3', 0),
+('puerta4', 'Puerta 4', 0);
+
+-- =========================
 -- TABLA TRABAJADORES
 -- =========================
 CREATE TABLE trabajadores (
   numero_empleado VARCHAR(20) PRIMARY KEY,
+  numero_trabajador VARCHAR(20) NOT NULL,
   nombre VARCHAR(50),
   apellido_paterno VARCHAR(50),
   apellido_materno VARCHAR(50),
@@ -47,22 +65,24 @@ CREATE TABLE trabajadores (
   marca_auto VARCHAR(50),
   color VARCHAR(50),
   placas VARCHAR(20),
-  departamento VARCHAR(100)
+  departamento VARCHAR(100),
+  tipo_usuario VARCHAR(30) NOT NULL DEFAULT 'trabajador',
+  rol VARCHAR(50) NOT NULL DEFAULT 'usuario'
 );
 
 INSERT INTO trabajadores
-(numero_empleado, nombre, apellido_paterno, apellido_materno, password, marca_auto, color, placas, departamento)
+(numero_empleado, numero_trabajador, nombre, apellido_paterno, apellido_materno, password, marca_auto, color, placas, departamento, tipo_usuario, rol)
 VALUES
-('10001','Carlos','Ramirez','Lopez','1234','Nissan','Rojo','ABC111','Administración'),
-('10002','Laura','Gomez','Perez','1234','Toyota','Blanco','ABC222','Biblioteca'),
-('10003','Miguel','Torres','Diaz','1234','Honda','Negro','ABC333','Mantenimiento'),
-('10004','Ana','Martinez','Ruiz','1234','Chevrolet','Azul','ABC444','Escolares'),
-('10005','Jorge','Hernandez','Soto','1234','Ford','Gris','ABC555','Dirección'),
-('10006','Paola','Navarro','Cruz','1234','Mazda','Rojo','ABC666','Laboratorio'),
-('10007','Luis','Vazquez','Morales','1234','Kia','Blanco','ABC777','Vigilancia'),
-('10008','Sofia','Reyes','Campos','1234','Hyundai','Negro','ABC888','Finanzas'),
-('10009','Diego','Aguilar','Vega','1234','Toyota','Plata','ABC999','Docencia'),
-('10953','Gimel','Muñoz','Flores','1234','Volkswagen','Plata','EG156F','Sistemas');
+('10001','10001','Carlos','Ramirez','Lopez','1234','Nissan','Rojo','ABC111','Administración','trabajador','administrador'),
+('10002','10002','Laura','Gomez','Perez','1234','Toyota','Blanco','ABC222','Biblioteca','trabajador','usuario'),
+('10003','10003','Miguel','Torres','Diaz','1234','Honda','Negro','ABC333','Mantenimiento','trabajador','usuario'),
+('10004','10004','Ana','Martinez','Ruiz','1234','Chevrolet','Azul','ABC444','Escolares','trabajador','usuario'),
+('10005','10005','Jorge','Hernandez','Soto','1234','Ford','Gris','ABC555','Dirección','trabajador','usuario'),
+('10006','10006','Paola','Navarro','Cruz','1234','Mazda','Rojo','ABC666','Laboratorio','trabajador','usuario'),
+('10007','10007','Luis','Vazquez','Morales','1234','Kia','Blanco','ABC777','Vigilancia','trabajador','usuario'),
+('10008','10008','Sofia','Reyes','Campos','1234','Hyundai','Negro','ABC888','Finanzas','trabajador','usuario'),
+('10009','10009','Diego','Aguilar','Vega','1234','Toyota','Plata','ABC999','Docencia','trabajador','usuario'),
+('10953','10953','Gimel','Muñoz','Flores','1234','Volkswagen','Plata','EG156F','Sistemas','trabajador','usuario');
 
 -- =========================
 -- TABLA CAJONES
